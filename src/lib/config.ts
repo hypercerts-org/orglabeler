@@ -12,3 +12,4 @@ export const BSKY_PASSWORD = process.env.BSKY_PASSWORD ?? ''
 export const ACTIVITY_COLLECTION = 'org.hypercerts.claim.activity'
 export const ACTIVITY_DB_PATH = process.env.ACTIVITY_DB_PATH ?? 'activity-log.db'
 export const LABELER_ENDPOINT = process.env.LABELER_ENDPOINT ?? ''
+export const PDS_URL = process.env.PDS_URL ?? ""
