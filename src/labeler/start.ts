@@ -8,6 +8,9 @@ import { startTapConsumer } from './tap-consumer'
 import { startMetricsServer } from './metrics'
 import logger from './logger'
 
+// Fix 3 & 4: module-scope shuttingDown flag used by both spawnTap and shutdown
+let shuttingDown = false
+
 function spawnTap(): ChildProcess {
   const tapProcess = spawn('tap', ['run'], {
     env: {
@@ -27,8 +30,19 @@ function spawnTap(): ChildProcess {
   tapProcess.stderr?.on('data', (data: Buffer) => {
     logger.error({ source: 'tap' }, data.toString().trim())
   })
+
+  // Fix 2: handle spawn errors (e.g. ENOENT when tap binary is missing)
+  tapProcess.on('error', (err) => {
+    logger.error({ err }, 'Failed to spawn tap process')
+    process.exit(1)
+  })
+
+  // Fix 3: exit on unexpected tap process death
   tapProcess.on('exit', (code) => {
-    logger.warn({ code }, 'Tap process exited')
+    if (!shuttingDown) {
+      logger.error({ code }, 'Tap process died unexpectedly — exiting')
+      process.exit(1)
+    }
   })
 
   return tapProcess
@@ -51,6 +65,34 @@ async function waitForTap(url: string, maxAttempts = 30, intervalMs = 1000): Pro
 }
 
 async function main() {
+  // Fix 4: declare tapProcess and consumer at outer scope so shutdown can access them
+  // even if a signal arrives during startup
+  let tapProcess: ChildProcess | undefined
+  let consumer: Awaited<ReturnType<typeof startTapConsumer>> | undefined
+
+  // Fix 4: register shutdown handlers EARLY, before any async work
+  async function shutdown(signal: string) {
+    if (shuttingDown) return
+    shuttingDown = true
+    logger.info({ signal }, 'Shutting down...')
+    await consumer?.destroy()
+    tapProcess?.kill('SIGTERM')
+    // Fix 6: await tap process exit (with 5s timeout) so it can flush its WAL
+    await new Promise<void>((resolve) => {
+      if (!tapProcess) return resolve()
+      tapProcess.on('exit', () => resolve())
+      setTimeout(resolve, 5000)
+    })
+    await new Promise<void>((resolve) => {
+      labelerServer.close(() => resolve())
+    })
+    logger.info('Shutdown complete')
+    process.exit(0)
+  }
+
+  process.on('SIGINT', () => shutdown('SIGINT'))
+  process.on('SIGTERM', () => shutdown('SIGTERM'))
+
   // Check for reset flag (useful for Railway where we cant access the volume directly)
   if (process.env.RESET_DB === 'true') {
     const { ACTIVITY_DB_PATH } = await import('../lib/config')
@@ -82,23 +124,18 @@ async function main() {
   logger.info({ port: METRICS_PORT }, 'Metrics server started')
 
   // 2b. Negate any stale DID-level labels from previous deployments
-  const negatedCount = await negateAllDIDLabels()
-  if (negatedCount > 0) {
-    logger.info({ count: negatedCount }, 'Negated stale DID-level labels from previous deployment')
+  // Fix 1: wrap in try/catch so a failure doesn't crash startup
+  try {
+    const negatedCount = await negateAllDIDLabels()
+    if (negatedCount > 0) {
+      logger.info({ count: negatedCount }, 'Negated stale DID-level labels')
+    }
+  } catch (err) {
+    logger.error({ err }, 'Failed to negate stale DID-level labels — continuing startup')
   }
 
-  // 3. Spawn tap sidecar
-  const tapProcess = spawnTap()
-  logger.info('Tap process spawned, waiting for health...')
-
-  // 4. Wait for tap to be ready
-  await waitForTap(TAP_URL)
-
-  // 5. Start tap consumer (replaces Jetstream subscription)
-  const consumer = startTapConsumer()
-  logger.info('Tap consumer started — receiving backfill + live events')
-
-  // 5b. Clean up any stale pending records from previous deploys
+  // Fix 7: clean up stale pending records BEFORE starting tap consumer
+  // so a backfill event can't re-score a record that we're about to delete
   const pendingRecords = getPendingActivities()
   if (pendingRecords.length > 0) {
     logger.warn({ count: pendingRecords.length }, 'Deleting stale pending records — they will be re-scored on next tap event')
@@ -107,20 +144,16 @@ async function main() {
     }
   }
 
-  // 6. Shutdown handler
-  async function shutdown(signal: string) {
-    logger.info({ signal }, 'Shutting down...')
-    await consumer.destroy()
-    tapProcess.kill('SIGTERM')
-    await new Promise<void>((resolve) => {
-      labelerServer.close(() => resolve())
-    })
-    logger.info('Shutdown complete')
-    process.exit(0)
-  }
+  // 3. Spawn tap sidecar
+  tapProcess = spawnTap()
+  logger.info('Tap process spawned, waiting for health...')
 
-  process.on('SIGINT', () => shutdown('SIGINT'))
-  process.on('SIGTERM', () => shutdown('SIGTERM'))
+  // 4. Wait for tap to be ready
+  await waitForTap(TAP_URL)
+
+  // 5. Start tap consumer (replaces Jetstream subscription)
+  consumer = startTapConsumer()
+  logger.info('Tap consumer started — receiving backfill + live events')
 }
 
 main().catch((err) => {
