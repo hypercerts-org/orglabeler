@@ -10,6 +10,7 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<LabelStats | null>(null)
   const [activities, setActivities] = useState<ActivityLogEntry[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   const fetchData = useCallback(async () => {
     try {
@@ -17,12 +18,15 @@ export default function DashboardPage() {
         fetch('/api/stats'),
         fetch('/api/recent?limit=10'),
       ])
+      if (!statsRes.ok || !recentRes.ok) throw new Error('API error')
       const statsData = await statsRes.json()
       const recentData = await recentRes.json()
       setStats(statsData.stats)
       setActivities(recentData.activities)
+      setError(null)
     } catch (error) {
       console.error('Failed to fetch dashboard data:', error)
+      setError('Failed to load data')
     } finally {
       setLoading(false)
     }
@@ -68,6 +72,17 @@ export default function DashboardPage() {
             The labeler process will analyze new org.hypercerts.claim.activity records as they
             appear on the network.
           </p>
+        </div>
+      )}
+
+      {/* Error state */}
+      {error && (
+        <div className='text-center py-8 text-rose-500 text-sm'>
+          <p>{error}</p>
+          <button onClick={() => { setError(null); fetchData() }}
+            className='mt-2 text-xs text-muted-foreground hover:text-foreground underline cursor-pointer'>
+            Retry
+          </button>
         </div>
       )}
 

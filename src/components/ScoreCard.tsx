@@ -36,13 +36,14 @@ const TIER_BAR_COLORS: Record<LabelTier, string> = {
 export function ScoreCard({ entry, defaultExpanded = false }: ScoreCardProps) {
   const [expanded, setExpanded] = useState(defaultExpanded)
 
-  const breakdown: ScoreBreakdownType = typeof entry.breakdown === 'string'
-    ? JSON.parse(entry.breakdown)
-    : entry.breakdown
-
-  const testSignals: string[] = typeof entry.testSignals === 'string'
-    ? JSON.parse(entry.testSignals)
-    : entry.testSignals
+  let breakdown: ScoreBreakdownType = {} as ScoreBreakdownType
+  let testSignals: string[] = []
+  try {
+    breakdown = typeof entry.breakdown === 'string' ? JSON.parse(entry.breakdown) : entry.breakdown
+  } catch { /* use empty */ }
+  try {
+    testSignals = typeof entry.testSignals === 'string' ? JSON.parse(entry.testSignals) : entry.testSignals
+  } catch { /* use empty */ }
 
   const shortDid = entry.did.replace('did:plc:', '').slice(0, 12) + '…'
   const hyperscanUrl = `https://www.hyperscan.dev/data?did=${encodeURIComponent(entry.did)}&collection=org.hypercerts.claim.activity&rkey=${entry.rkey}`
@@ -51,8 +52,12 @@ export function ScoreCard({ entry, defaultExpanded = false }: ScoreCardProps) {
 
   return (
     <div
+      role='button'
+      tabIndex={0}
+      aria-expanded={expanded}
       className='border border-border rounded-lg overflow-hidden bg-card transition-colors hover:bg-accent/30 cursor-pointer'
       onClick={() => setExpanded(prev => !prev)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpanded(prev => !prev) } }}
     >
       {/* Header row */}
       <div className='flex items-center justify-between px-3 py-2.5'>

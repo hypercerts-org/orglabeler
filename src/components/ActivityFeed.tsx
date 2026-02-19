@@ -44,9 +44,13 @@ export function ActivityFeed({
       {/* Activity list */}
       {activities.length > 0 && (
         <div className='space-y-2 stagger-children'>
-          {activities.map(entry => (
-            <ScoreCard key={entry.uri ?? entry.id} entry={entry} />
-          ))}
+          {activities.map(entry => {
+            try {
+              return <ScoreCard key={entry.uri ?? entry.id} entry={entry} />
+            } catch {
+              return null
+            }
+          })}
         </div>
       )}
 

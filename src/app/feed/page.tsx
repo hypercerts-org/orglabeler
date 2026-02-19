@@ -22,10 +22,11 @@ export default function FeedPage() {
   const [offset, setOffset] = useState(0)
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
+  // Fix #2: remove offset from deps — use currentOffset param instead of closure
   const fetchActivities = useCallback(
-    async (reset = false) => {
-      const currentOffset = reset ? 0 : offset
+    async (currentOffset: number, reset = false) => {
       if (reset) setLoading(true)
       else setLoadingMore(true)
 
@@ -34,6 +35,7 @@ export default function FeedPage() {
         const res = await fetch(
           `/api/recent?limit=${LIMIT}&offset=${currentOffset}${tierParam}`
         )
+        if (!res.ok) throw new Error('API error')
         const data = await res.json()
 
         if (reset) {
@@ -44,30 +46,32 @@ export default function FeedPage() {
           setOffset(prev => prev + LIMIT)
         }
         setTotal(data.total)
+        setError(null)
       } catch (error) {
         console.error('Failed to fetch activities:', error)
+        setError('Failed to load data')
       } finally {
         setLoading(false)
         setLoadingMore(false)
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selectedTier, offset]
+    [selectedTier]  // only depend on tier
   )
 
-  // Stable poller: always fetches page 1 without touching load-more offset
+  // Fix #3: stable poller — only update if newest item changed, DON'T reset offset
   const pollFirst = useCallback(async () => {
     try {
       const tierParam = selectedTier === 'all' ? '' : `&tier=${selectedTier}`
       const res = await fetch(`/api/recent?limit=${LIMIT}&offset=0${tierParam}`)
+      if (!res.ok) throw new Error('API error')
       const data = await res.json()
       setActivities(prev => {
-        // Only update if the newest item changed to avoid unnecessary re-renders
         if (data.activities[0]?.uri === prev[0]?.uri) return prev
-        return data.activities
+        // Merge: replace first page, keep any extra loaded pages
+        return [...data.activities, ...prev.slice(LIMIT)]
       })
       setTotal(data.total)
-      setOffset(LIMIT)
+      // Do NOT reset offset — preserve load-more position
     } catch (error) {
       console.error('Failed to poll activities:', error)
     }
@@ -75,9 +79,8 @@ export default function FeedPage() {
 
   // Reset and re-fetch when tier changes
   useEffect(() => {
-    fetchActivities(true)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTier])
+    fetchActivities(0, true)
+  }, [selectedTier, fetchActivities])
 
   // Poll every 5s for near real-time updates
   useEffect(() => {
@@ -86,7 +89,7 @@ export default function FeedPage() {
   }, [pollFirst])
 
   const handleLoadMore = () => {
-    fetchActivities(false)
+    fetchActivities(offset, false)
   }
 
   return (
@@ -122,6 +125,17 @@ export default function FeedPage() {
           {total} activities
         </span>
       </div>
+
+      {/* Error state */}
+      {error && (
+        <div className='text-center py-8 text-rose-500 text-sm'>
+          <p>{error}</p>
+          <button onClick={() => { setError(null); fetchActivities(0, true) }}
+            className='mt-2 text-xs text-muted-foreground hover:text-foreground underline cursor-pointer'>
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Activity feed with load more */}
       <ActivityFeed
