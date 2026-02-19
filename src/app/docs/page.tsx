@@ -60,7 +60,7 @@ export default function DocsPage() {
           <div className='flex items-center gap-2 min-w-max'>
             {[
               { step: 'Record Created', sub: 'on AT Protocol' },
-              { step: 'Detected', sub: 'via Jetstream' },
+              { step: 'Detected', sub: 'via Tap' },
               { step: 'Scored', sub: '9 criteria' },
               { step: 'Labeled', sub: 'signed label applied' },
             ].map(({ step, sub }, i, arr) => (
@@ -81,10 +81,13 @@ export default function DocsPage() {
           <li className='flex gap-3'>
             <span className='font-[family-name:var(--font-syne)] font-bold text-foreground shrink-0'>1.</span>
             <span>
-              Hyperlabel listens to the AT Protocol network via{' '}
-              <span className='font-mono text-xs bg-secondary rounded px-1 py-0.5'>Jetstream</span>{' '}
-              for <span className='font-mono text-xs bg-secondary rounded px-1 py-0.5'>org.hypercerts.claim.activity</span> records
-              as they are created or updated by any PDS on the network.
+              Hyperlabel uses{' '}
+              <span className='font-mono text-xs bg-secondary rounded px-1 py-0.5'>Tap</span>{' '}
+              — Bluesky&apos;s official sync tool — to monitor the AT Protocol network for{' '}
+              <span className='font-mono text-xs bg-secondary rounded px-1 py-0.5'>org.hypercerts.claim.activity</span>{' '}
+              records. Tap automatically discovers repos, backfills historical records from each PDS,
+              and streams live events with cryptographic verification. This means records created
+              before the labeler started are still scored.
             </span>
           </li>
           <li className='flex gap-3'>
