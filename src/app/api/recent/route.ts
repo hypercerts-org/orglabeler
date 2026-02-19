@@ -5,32 +5,43 @@ import type { LabelTier, ActivityLogEntry } from '@/lib/types'
 const VALID_TIERS: LabelTier[] = ['pending', 'high-quality', 'standard', 'draft', 'likely-test']
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url)
-  const limit = Math.min(Number(searchParams.get('limit') ?? 20), 100)
-  const offset = Number(searchParams.get('offset') ?? 0)
-  const tierParam = searchParams.get('tier') as LabelTier | 'all' | null
+  try {
+    const { searchParams } = new URL(request.url)
 
-  // Validate tier — if invalid (not one of the 4 tiers or "all"), treat as "all"
-  const isValidTier = tierParam && tierParam !== 'all' && VALID_TIERS.includes(tierParam as LabelTier)
-  const tier = isValidTier ? (tierParam as LabelTier) : null
+    const rawLimit = Number(searchParams.get('limit') ?? 20)
+    const rawOffset = Number(searchParams.get('offset') ?? 0)
+    const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(rawLimit, 100)) : 20
+    const offset = Number.isFinite(rawOffset) ? Math.max(0, rawOffset) : 0
 
-  let activities: ActivityLogEntry[]
-  let total: number
+    const tierParam = searchParams.get('tier') as LabelTier | 'all' | null
 
-  if (tier) {
-    activities = getActivitiesByTier(tier, limit, offset)
-    total = getTotalCount(tier)
-  } else {
-    activities = getRecentActivities(limit, offset)
-    total = getTotalCount()
+    // Validate tier — if invalid (not one of the 4 tiers or "all"), treat as "all"
+    const isValidTier = tierParam && tierParam !== 'all' && VALID_TIERS.includes(tierParam as LabelTier)
+    const tier = isValidTier ? (tierParam as LabelTier) : null
+
+    let activities: ActivityLogEntry[]
+    let total: number
+
+    if (tier) {
+      activities = getActivitiesByTier(tier, limit, offset)
+      total = getTotalCount(tier)
+    } else {
+      activities = getRecentActivities(limit, offset)
+      total = getTotalCount()
+    }
+
+    // Parse JSON strings in each entry before returning
+    const parsed = activities.map(a => {
+      let breakdown = {}
+      let testSignals: string[] = []
+      try { breakdown = JSON.parse(a.breakdown) } catch { /* use empty */ }
+      try { testSignals = JSON.parse(a.testSignals) } catch { /* use empty */ }
+      return { ...a, breakdown, testSignals }
+    })
+
+    return NextResponse.json({ activities: parsed, total })
+  } catch (err) {
+    console.error('API /api/recent error:', err)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-
-  // Parse JSON strings in each entry before returning
-  const parsed = activities.map(a => ({
-    ...a,
-    breakdown: JSON.parse(a.breakdown),
-    testSignals: JSON.parse(a.testSignals),
-  }))
-
-  return NextResponse.json({ activities: parsed, total })
 }
