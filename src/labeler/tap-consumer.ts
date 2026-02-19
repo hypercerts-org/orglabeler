@@ -30,10 +30,14 @@ indexer.record(async (evt) => {
   const record = evt.record as unknown as ActivityRecord
   const source = evt.live === false ? 'backfill' : 'live'
 
+  // Normalize title once — scorer sees raw value (empty string if absent),
+  // logActivity uses 'Untitled' for dashboard display only
+  const title = record.title ?? ''
+
   // Step 1: Score (pure computation — cannot fail from DB issues)
   let result
   try {
-    result = scoreActivity(record)
+    result = scoreActivity({ ...record, title })
   } catch (err) {
     logger.error({ err, did: evt.did, rkey: evt.rkey }, 'Error scoring activity')
     return
@@ -47,7 +51,7 @@ indexer.record(async (evt) => {
       did: evt.did,
       rkey: evt.rkey,
       uri: recordUri,
-      title: record.title || 'Untitled',
+      title: title || 'Untitled',
       score: result.totalScore,
       tier: result.tier,
       breakdown: JSON.stringify(result.breakdown),
@@ -67,7 +71,7 @@ indexer.record(async (evt) => {
   try {
     await applyQualityLabel(recordUri, result.tier)
   } catch (err) {
-    logger.error({ err, did: evt.did }, 'Error applying label (score still saved)')
+    logger.error({ err, uri: recordUri, did: evt.did }, 'Error applying label (score still saved)')
   }
 })
 
@@ -79,7 +83,8 @@ export function startTapConsumer(): { channel: TapChannel; destroy: () => Promis
   const channel = tap.channel(indexer)
   // channel.start() returns a promise that resolves when destroyed - do NOT await it
   channel.start().catch((err) => {
-    logger.error({ err }, 'Tap channel error')
+    logger.error({ err }, 'Tap channel fatal error — exiting')
+    process.exit(1)
   })
   return {
     channel,
