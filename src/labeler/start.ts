@@ -1,4 +1,5 @@
 import 'dotenv/config'
+import fs from 'node:fs'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { HOST, LABELER_PORT, METRICS_PORT, TAP_URL, TAP_BIND, TAP_DB_PATH, ACTIVITY_COLLECTION } from '../lib/config'
 import { labelerServer } from './server'
@@ -49,6 +50,21 @@ async function waitForTap(url: string, maxAttempts = 30, intervalMs = 1000): Pro
 }
 
 async function main() {
+  // Check for reset flag (useful for Railway where we cant access the volume directly)
+  if (process.env.RESET_DB === 'true') {
+    const { ACTIVITY_DB_PATH } = await import('../lib/config')
+    const filesToDelete = [ACTIVITY_DB_PATH, TAP_DB_PATH, `${ACTIVITY_DB_PATH}-wal`, `${ACTIVITY_DB_PATH}-shm`, `${TAP_DB_PATH}-wal`, `${TAP_DB_PATH}-shm`]
+    for (const f of filesToDelete) {
+      try {
+        fs.unlinkSync(f)
+        logger.warn({ file: f }, 'RESET_DB: deleted database file')
+      } catch {
+        // file may not exist, thats fine
+      }
+    }
+    logger.warn('RESET_DB: databases cleared, starting fresh. Remove RESET_DB env var after restart.')
+  }
+
   logger.info('Starting labeler process')
 
   // 1. Start LabelerServer
