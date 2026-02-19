@@ -1,5 +1,5 @@
 #!/usr/bin/env tsx
-// Run with: npx tsx src/labeler/setup.ts <handle> <password> [labeler-endpoint]
+// Run with: npx tsx src/labeler/setup.ts <handle> <password> [labeler-endpoint] [--token PLC_TOKEN]
 // Or: npm run setup -- satyam2.climateai.org mypassword https://labeler.example.com
 
 import { plcRequestToken, plcSetupLabeler, declareLabeler } from "@skyware/labeler/scripts"
@@ -15,7 +15,7 @@ const handle = process.argv[2] || process.env.BSKY_IDENTIFIER || ""
 const password = process.argv[3] || process.env.BSKY_PASSWORD || ""
 
 if (!handle || !password) {
-  console.error("Usage: npx tsx src/labeler/setup.ts <handle> <password> [labeler-endpoint]")
+  console.error("Usage: npx tsx src/labeler/setup.ts <handle> <password> [labeler-endpoint] [--token PLC_TOKEN]")
   console.error("  Or set BSKY_IDENTIFIER and BSKY_PASSWORD env vars.")
   process.exit(1)
 }
@@ -24,6 +24,13 @@ const labelerEndpoint =
   process.argv[4] ||
   process.env.LABELER_ENDPOINT ||
   `https://labeler.${handle}`
+
+// Find --token flag or use 5th positional arg or PLC_TOKEN env var
+const existingToken = (() => {
+  const tokenIdx = process.argv.indexOf('--token')
+  if (tokenIdx !== -1 && process.argv[tokenIdx + 1]) return process.argv[tokenIdx + 1]
+  return process.argv[5] || process.env.PLC_TOKEN || ''
+})()
 
 console.log(`\nLabeler endpoint: ${labelerEndpoint}`)
 console.log(`Account:          ${handle}\n`)
@@ -123,24 +130,30 @@ async function main() {
     process.exit(1)
   }
 
-  // Step 2: Request PLC token (sends email)
-  console.log("Requesting PLC operation token (this sends a confirmation email)...")
-  try {
-    await plcRequestToken({ identifier: handle, password, pds: pdsUrl })
-    console.log("  ✓ Token requested.\n")
-  } catch (err) {
-    console.error("  ✗ Failed to request PLC token. Check your handle and password.")
-    console.error("  Error:", err)
-    process.exit(1)
-  }
+  let plcToken = existingToken
 
-  console.log("Check your email for a confirmation code.")
-
-  // Step 3: Prompt for PLC token (the ONE interactive step)
-  const plcToken = await prompt("\nPaste the PLC token from your email: ")
   if (!plcToken) {
-    console.error("No token provided. Aborting.")
-    process.exit(1)
+    // Step 2: Request PLC token (sends email)
+    console.log("Requesting PLC operation token (this sends a confirmation email)...")
+    try {
+      await plcRequestToken({ identifier: handle, password, pds: pdsUrl })
+      console.log("  ✓ Token requested.\n")
+    } catch (err) {
+      console.error("  ✗ Failed to request PLC token. Check your handle and password.")
+      console.error("  Error:", err)
+      process.exit(1)
+    }
+
+    console.log("Check your email for a confirmation code.")
+
+    // Step 3: Prompt for PLC token (the ONE interactive step)
+    plcToken = await prompt("\nPaste the PLC token from your email: ")
+    if (!plcToken) {
+      console.error("No token provided. Aborting.")
+      process.exit(1)
+    }
+  } else {
+    console.log(`Using provided PLC token: ${plcToken.slice(0, 5)}...\n`)
   }
 
   // Step 4: Setup labeler on PLC (adds signing key + labeler service to DID doc)
