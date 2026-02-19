@@ -30,6 +30,10 @@ indexer.record(async (evt) => {
     logger.debug({ did: evt.did, rkey: evt.rkey }, 'Processing live event')
   }
 
+  if (!evt.record) {
+    logger.warn({ did: evt.did, rkey: evt.rkey, action: evt.action }, 'Skipping event with missing record payload')
+    return
+  }
   const record = evt.record as unknown as ActivityRecord
 
   // Phase 1: Detect — log immediately as 'pending'
