@@ -1,5 +1,5 @@
 import { Jetstream } from '@skyware/jetstream'
-import type { CommitCreateEvent } from '@skyware/jetstream'
+import type { CommitCreateEvent, CommitUpdateEvent } from '@skyware/jetstream'
 import { FIREHOSE_URL, ACTIVITY_COLLECTION } from '../lib/config'
 import { scoreActivity } from '../lib/scorer'
 import { applyQualityLabel } from './server'
@@ -51,6 +51,44 @@ export function setupHandlers(jetstream: Jetstream): void {
       )
     } catch (err) {
       logger.error({ err, did: event.did, rkey: event.commit.rkey }, 'Error processing activity record')
+    }
+  })
+
+  jetstream.onUpdate(ACTIVITY_COLLECTION, async (event: CommitUpdateEvent<typeof ACTIVITY_COLLECTION>) => {
+    try {
+      const record = event.commit.record as unknown as ActivityRecord
+
+      // Validate minimally: must have title and shortDescription and createdAt
+      if (!record.title || !record.shortDescription || !record.createdAt) {
+        logger.warn({ did: event.did, rkey: event.commit.rkey }, 'Skipping update: missing required fields')
+        return
+      }
+
+      // Score the record
+      const result = scoreActivity(record)
+
+      // Apply label
+      await applyQualityLabel(event.did, result.tier)
+
+      // Log to activity DB (INSERT OR REPLACE handles upsert)
+      logActivity({
+        did: event.did,
+        rkey: event.commit.rkey,
+        uri: `at://${event.did}/${ACTIVITY_COLLECTION}/${event.commit.rkey}`,
+        title: record.title,
+        score: result.totalScore,
+        tier: result.tier,
+        breakdown: JSON.stringify(result.breakdown),
+        testSignals: JSON.stringify(result.testSignals),
+        labeledAt: new Date().toISOString(),
+      })
+
+      logger.info(
+        { did: event.did, rkey: event.commit.rkey, score: result.totalScore, tier: result.tier },
+        `Re-scored ${event.did} rkey=${event.commit.rkey}: ${result.totalScore}/100 → ${result.tier} (update)`
+      )
+    } catch (err) {
+      logger.error({ err, did: event.did, rkey: event.commit.rkey }, 'Error processing activity update')
     }
   })
 

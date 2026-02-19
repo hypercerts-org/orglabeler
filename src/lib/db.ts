@@ -9,6 +9,7 @@ export function getDb(): Database.Database {
   if (_db) return _db
 
   _db = new Database(ACTIVITY_DB_PATH)
+  _db.pragma('journal_mode = WAL')
 
   _db.exec(`
     CREATE TABLE IF NOT EXISTS activities (

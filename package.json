@@ -7,33 +7,35 @@
     "build": "next build",
     "start": "next start",
     "dev:labeler": "tsx src/labeler/start.ts",
-    "set-labels": "tsx src/labeler/set-labels.ts"
+    "set-labels": "tsx src/labeler/set-labels.ts",
+    "setup": "tsx src/labeler/setup.ts"
   },
   "dependencies": {
-    "next": "^15.0.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "@tailwindcss/postcss": "^4.0.0",
-    "tailwindcss": "^4.0.0",
-    "next-themes": "^0.4.4",
     "@atproto/api": "^0.13.0",
-    "@skyware/labeler": "^0.2.0",
-    "@skyware/jetstream": "^0.1.0",
+    "@atproto/crypto": "^0.4.5",
     "@skyware/bot": "^0.4.0",
+    "@skyware/jetstream": "^0.1.0",
+    "@skyware/labeler": "^0.2.0",
+    "@tailwindcss/postcss": "^4.0.0",
     "better-sqlite3": "^11.0.0",
     "dotenv": "^16.0.0",
+    "express": "^4.21.0",
+    "next": "^15.0.0",
+    "next-themes": "^0.4.4",
     "pino": "^9.0.0",
     "pino-pretty": "^13.0.0",
-    "express": "^4.21.0",
-    "prom-client": "^15.0.0"
+    "prom-client": "^15.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwindcss": "^4.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.0.0",
+    "@types/better-sqlite3": "^7.6.0",
+    "@types/express": "^5.0.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "@types/better-sqlite3": "^7.6.0",
-    "@types/express": "^5.0.0",
-    "tsx": "^4.0.0"
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
   }
 }
