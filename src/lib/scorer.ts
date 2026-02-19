@@ -38,7 +38,7 @@ export function scoreActivity(record: ActivityRecord): ScoreResult {
 
   // Title ends with trailing small number (template spam pattern)
   // e.g. "Clean Energy Community Initiative 37" but NOT short titles like "Phase 2"
-  if (/^.{15,}\s+\d{1,2}$/.test(title.trim())) {
+  if (/^.{15,}\s+\d{1,3}$/.test(title.trim())) {
     testSignals.push('title ends with trailing number (template spam)')
   }
 
