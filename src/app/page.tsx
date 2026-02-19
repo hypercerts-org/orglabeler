@@ -30,7 +30,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchData()
-    const interval = setInterval(fetchData, 30000) // Poll every 30s
+    const interval = setInterval(fetchData, 5000) // Poll every 5s
     return () => clearInterval(interval)
   }, [fetchData])
 

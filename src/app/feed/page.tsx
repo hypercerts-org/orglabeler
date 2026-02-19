@@ -55,11 +55,35 @@ export default function FeedPage() {
     [selectedTier, offset]
   )
 
+  // Stable poller: always fetches page 1 without touching load-more offset
+  const pollFirst = useCallback(async () => {
+    try {
+      const tierParam = selectedTier === 'all' ? '' : `&tier=${selectedTier}`
+      const res = await fetch(`/api/recent?limit=${LIMIT}&offset=0${tierParam}`)
+      const data = await res.json()
+      setActivities(prev => {
+        // Only update if the newest item changed to avoid unnecessary re-renders
+        if (data.activities[0]?.uri === prev[0]?.uri) return prev
+        return data.activities
+      })
+      setTotal(data.total)
+      setOffset(LIMIT)
+    } catch (error) {
+      console.error('Failed to poll activities:', error)
+    }
+  }, [selectedTier])
+
   // Reset and re-fetch when tier changes
   useEffect(() => {
     fetchActivities(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTier])
+
+  // Poll every 5s for near real-time updates
+  useEffect(() => {
+    const interval = setInterval(pollFirst, 5000)
+    return () => clearInterval(interval)
+  }, [pollFirst])
 
   const handleLoadMore = () => {
     fetchActivities(false)
