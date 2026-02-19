@@ -8,7 +8,7 @@ export const labelerServer = new LabelerServer({ did: DID, signingKey: SIGNING_K
 export async function fetchCurrentLabels(uri: string): Promise<Set<string>> {
   await labelerServer.db.execute('SELECT 1') // ensure db is ready
   const result = await labelerServer.db.execute({
-    sql: 'SELECT val, neg FROM labels WHERE uri = ?',
+    sql: 'SELECT val, neg FROM labels WHERE uri = ? ORDER BY id ASC',
     args: [uri],
   })
 
@@ -35,37 +35,60 @@ export async function negateAllDIDLabels(): Promise<number> {
   let negatedCount = 0
   for (const row of result.rows) {
     const did = row['uri'] as string
-    const activeLabels = await fetchCurrentLabels(did)
-    const activeQualityLabels = [...activeLabels].filter(l => QUALITY_LABEL_IDENTIFIERS.includes(l))
-    if (activeQualityLabels.length > 0) {
-      logger.info({ did, negating: activeQualityLabels }, 'Negating stale DID-level quality labels')
-      await labelerServer.createLabels({ uri: did }, { negate: activeQualityLabels })
-      negatedCount++
+    try {
+      const activeLabels = await fetchCurrentLabels(did)
+      const activeQualityLabels = [...activeLabels].filter(l => QUALITY_LABEL_IDENTIFIERS.includes(l))
+      if (activeQualityLabels.length > 0) {
+        logger.info({ did, negating: activeQualityLabels }, 'Negating stale DID-level quality labels')
+        await labelerServer.createLabels({ uri: did }, { negate: activeQualityLabels })
+        negatedCount++
+      }
+    } catch (err) {
+      logger.error({ err, did }, 'Failed to negate DID-level labels, continuing')
     }
   }
   return negatedCount
 }
 
+const uriLocks = new Map<string, Promise<void>>()
+
 export async function applyQualityLabel(recordUri: string, labelIdentifier: string): Promise<void> {
-  // 1. Fetch current labels for the record URI
-  const currentLabels = await fetchCurrentLabels(recordUri)
-
-  // 2. Filter to only QUALITY_LABEL_IDENTIFIERS
-  const currentQualityLabels = [...currentLabels].filter(l => QUALITY_LABEL_IDENTIFIERS.includes(l))
-
-  // 3. If record already has the same quality label → return (no change needed)
-  if (currentQualityLabels.includes(labelIdentifier)) {
-    logger.info({ uri: recordUri, label: labelIdentifier }, 'Record already has label, skipping')
+  // Validate labelIdentifier before any DB operations
+  if (!QUALITY_LABEL_IDENTIFIERS.includes(labelIdentifier)) {
+    logger.error({ uri: recordUri, label: labelIdentifier }, 'Rejected unknown label identifier')
     return
   }
 
-  // 4. If record has a different quality label → negate it first
-  if (currentQualityLabels.length > 0) {
-    logger.info({ uri: recordUri, negating: currentQualityLabels }, 'Negating existing quality labels')
-    await labelerServer.createLabels({ uri: recordUri }, { negate: currentQualityLabels })
-  }
+  // Wait for any in-flight operation on this URI
+  const existing = uriLocks.get(recordUri)
+  const operation = (existing ?? Promise.resolve()).then(async () => {
+    // 1. Fetch current labels for the record URI
+    const currentLabels = await fetchCurrentLabels(recordUri)
 
-  // 5. Create the new label
-  logger.info({ uri: recordUri, label: labelIdentifier }, 'Applying quality label')
-  await labelerServer.createLabel({ uri: recordUri, val: labelIdentifier })
+    // 2. Filter to only QUALITY_LABEL_IDENTIFIERS
+    const currentQualityLabels = [...currentLabels].filter(l => QUALITY_LABEL_IDENTIFIERS.includes(l))
+
+    // 3. If record already has the same quality label → return (no change needed)
+    if (currentQualityLabels.includes(labelIdentifier)) {
+      logger.info({ uri: recordUri, label: labelIdentifier }, 'Record already has label, skipping')
+      return
+    }
+
+    // 4. If record has a different quality label → negate it first
+    if (currentQualityLabels.length > 0) {
+      logger.info({ uri: recordUri, negating: currentQualityLabels }, 'Negating existing quality labels')
+      await labelerServer.createLabels({ uri: recordUri }, { negate: currentQualityLabels })
+    }
+
+    // 5. Create the new label
+    logger.info({ uri: recordUri, label: labelIdentifier }, 'Applying quality label')
+    await labelerServer.createLabel({ uri: recordUri, val: labelIdentifier })
+  }).finally(() => {
+    // Clean up lock if we're still the latest
+    if (uriLocks.get(recordUri) === operation) {
+      uriLocks.delete(recordUri)
+    }
+  })
+  uriLocks.set(recordUri, operation)
+  return operation
 }
