@@ -4,6 +4,7 @@
 
 import { plcRequestToken, plcSetupLabeler, declareLabeler } from "@skyware/labeler/scripts"
 import { LABELS } from "../lib/constants"
+import { resolvePds } from "../lib/resolve-pds"
 import * as readline from "node:readline"
 import * as fs from "node:fs"
 import { secp256k1 } from "@noble/curves/secp256k1"
@@ -106,10 +107,26 @@ async function main() {
   const signingKeyHex = Buffer.from(privateKeyBytes).toString("hex")
   console.log(`  Key generated (${signingKeyHex.slice(0, 8)}...)\n`)
 
+  // Step 1.5: Resolve PDS from handle
+  console.log("Resolving account PDS...")
+  let did = ""
+  let pdsUrl = ""
+  try {
+    const resolved = await resolvePds(handle)
+    did = resolved.did
+    pdsUrl = resolved.pds
+    console.log(`  DID: ${did}`)
+    console.log(`  PDS: ${pdsUrl}\n`)
+  } catch (err) {
+    console.error("  ✗ Failed to resolve handle. Check that the handle exists.")
+    console.error("  Error:", err)
+    process.exit(1)
+  }
+
   // Step 2: Request PLC token (sends email)
   console.log("Requesting PLC operation token (this sends a confirmation email)...")
   try {
-    await plcRequestToken({ identifier: handle, password })
+    await plcRequestToken({ identifier: handle, password, pds: pdsUrl })
     console.log("  ✓ Token requested.\n")
   } catch (err) {
     console.error("  ✗ Failed to request PLC token. Check your handle and password.")
@@ -132,6 +149,7 @@ async function main() {
     await plcSetupLabeler({
       identifier: handle,
       password,
+      pds: pdsUrl,
       plcToken,
       endpoint: labelerEndpoint,
       privateKey: signingKeyHex,
@@ -157,7 +175,7 @@ async function main() {
   }))
 
   try {
-    await declareLabeler({ identifier: handle, password }, labelDefs, true)
+    await declareLabeler({ identifier: handle, password, pds: pdsUrl }, labelDefs, true)
     for (const label of LABELS) {
       console.log(`  ✓ ${label.identifier}: ${label.locales[0]?.name}`)
     }
@@ -169,38 +187,21 @@ async function main() {
     // Don't exit — continue to write .env with what we have
   }
 
-  // Step 6: Resolve handle to DID
-  console.log("Resolving handle to DID...")
-  let did = ""
-  try {
-    const res = await fetch(
-      `https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle=${encodeURIComponent(handle)}`
-    )
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const json = (await res.json()) as { did?: string }
-    did = json.did ?? ""
-    if (!did) throw new Error("DID not found in response")
-    console.log(`  ✓ DID: ${did}\n`)
-  } catch (err) {
-    console.error("  ✗ Failed to resolve handle to DID.")
-    console.error("  Error:", err)
-    console.error("  You will need to set DID manually in .env")
-  }
-
-  // Step 7: Write .env (preserve existing values, update/add our keys)
+  // Step 6: Write .env (preserve existing values, update/add our keys)
   const envPath = ".env"
   const updates: Record<string, string> = {
     BSKY_IDENTIFIER: handle,
     BSKY_PASSWORD: password,
     SIGNING_KEY: signingKeyHex,
     LABELER_ENDPOINT: labelerEndpoint,
+    PDS_URL: pdsUrl,
   }
   if (did) updates.DID = did
 
   writeEnvFile(envPath, updates)
   console.log(`✓ Written to ${envPath}`)
 
-  // Step 8: Print success summary
+  // Step 7: Print success summary
   console.log("\n=== Setup Complete ===")
   if (did) console.log(`DID:             ${did}`)
   console.log(`Signing key:     ${signingKeyHex.slice(0, 8)}...`)
