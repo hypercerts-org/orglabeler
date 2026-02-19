@@ -34,7 +34,21 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: 'Hyperlabel',
-  description: 'Monitoring hypercert activity quality across the hypersphere.',
+  description: 'Automated quality scoring for hypercert activity records on AT Protocol.',
+  metadataBase: new URL('https://hyperlabel-production.up.railway.app'),
+  openGraph: {
+    title: 'Hyperlabel',
+    description: 'Automated quality scoring for hypercert activity records on AT Protocol.',
+    url: 'https://hyperlabel-production.up.railway.app',
+    siteName: 'Hyperlabel',
+    locale: 'en_US',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Hyperlabel',
+    description: 'Automated quality scoring for hypercert activity records on AT Protocol.',
+  },
 }
 
 export default function RootLayout({ children }: { children: ReactNode }) {
