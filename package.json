@@ -11,7 +11,8 @@
     "start:all": "concurrently --names \"next,labeler\" --prefix-colors \"blue,green\" \"npm run start\" \"npm run dev:labeler\"",
     "set-labels": "tsx src/labeler/set-labels.ts",
     "setup": "tsx src/labeler/setup.ts",
-    "reset": "tsx src/labeler/reset-db.ts"
+    "reset": "tsx src/labeler/reset-db.ts",
+    "backfill": "tsx src/labeler/backfill.ts"
   },
   "dependencies": {
     "@atproto/api": "^0.13.0",
