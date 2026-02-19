@@ -64,12 +64,13 @@ export function scoreActivity(record: ActivityRecord): ScoreResult {
   }
 
   // 2. shortDescQuality (0-15)
+  const trimmedShortDesc = shortDesc.trim()
   let shortDescQuality = 0
-  if (shortDesc.trim().length <= 10 || TEST_PATTERNS.some(p => p.test(shortDesc.trim()))) {
+  if (trimmedShortDesc.length <= 10 || TEST_PATTERNS.some(p => p.test(trimmedShortDesc))) {
     shortDescQuality = 0
-  } else if (shortDesc.length > 150) {
+  } else if (trimmedShortDesc.length > 150) {
     shortDescQuality = 15
-  } else if (shortDesc.length >= 50) {
+  } else if (trimmedShortDesc.length >= 50) {
     shortDescQuality = 10
   } else {
     // 10 < length <= 50 (already excluded <= 10 above)
@@ -104,7 +105,7 @@ export function scoreActivity(record: ActivityRecord): ScoreResult {
   if (workScope) {
     if (typeof workScope === 'string' && workScope.length > 0) {
       hasWorkScope = 10
-    } else if (typeof workScope === 'object' && workScope.uri) {
+    } else if (typeof workScope === 'object' && (workScope.uri || workScope.cid)) {
       hasWorkScope = 10
     }
   }
@@ -113,8 +114,8 @@ export function scoreActivity(record: ActivityRecord): ScoreResult {
   const contributors = record.contributors ?? []
   let contributorQuality = 0
   if (contributors.length >= 1) {
-    const withWeight = contributors.filter(c => c.contributionWeight !== undefined && c.contributionWeight !== null)
-    const withDetails = contributors.filter(c => c.contributionDetails !== undefined && c.contributionDetails !== null)
+    const withWeight = contributors.filter(c => c.contributionWeight != null && c.contributionWeight !== '')
+    const withDetails = contributors.filter(c => c.contributionDetails != null && c.contributionDetails !== '')
     if (contributors.length >= 2 && withWeight.length >= 2 && withDetails.length >= 1) {
       contributorQuality = 15
     } else if (withWeight.length >= 1) {
