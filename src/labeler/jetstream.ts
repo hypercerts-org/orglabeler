@@ -3,7 +3,7 @@ import type { CommitCreateEvent, CommitUpdateEvent } from '@skyware/jetstream'
 import { FIREHOSE_URL, ACTIVITY_COLLECTION } from '../lib/config'
 import { scoreActivity } from '../lib/scorer'
 import { applyQualityLabel } from './server'
-import { logActivity } from '../lib/db'
+import { logActivity, updateActivity } from '../lib/db'
 import logger from './logger'
 import type { ActivityRecord } from '../lib/types'
 
@@ -17,78 +17,100 @@ export function createJetstream(cursor: number): Jetstream {
 
 export function setupHandlers(jetstream: Jetstream): void {
   jetstream.onCreate(ACTIVITY_COLLECTION, async (event: CommitCreateEvent<typeof ACTIVITY_COLLECTION>) => {
+    const record = event.commit.record as unknown as ActivityRecord
+
+    // Validate: must have title OR shortDescription
+    if (!record.title && !record.shortDescription) {
+      logger.warn({ did: event.did, rkey: event.commit.rkey }, 'Skipping record: no title or description')
+      return
+    }
+
+    // Phase 1: Detect — log immediately as 'pending'
+    logActivity({
+      did: event.did,
+      rkey: event.commit.rkey,
+      uri: `at://${event.did}/${ACTIVITY_COLLECTION}/${event.commit.rkey}`,
+      title: record.title || 'Untitled',
+      score: 0,
+      tier: 'pending',
+      breakdown: JSON.stringify({}),
+      testSignals: JSON.stringify([]),
+      labeledAt: new Date().toISOString(),
+    })
+    logger.info({ did: event.did, rkey: event.commit.rkey }, 'Activity detected')
+
+    // Phase 2: Evaluate — score and update the pending record
+    let tier: string = 'pending'
     try {
-      const record = event.commit.record as unknown as ActivityRecord
-
-      // Validate minimally: must have title and shortDescription and createdAt
-      if (!record.title || !record.shortDescription || !record.createdAt) {
-        logger.warn({ did: event.did, rkey: event.commit.rkey }, 'Skipping record: missing required fields')
-        return
-      }
-
-      // Score the record
       const result = scoreActivity(record)
-
-      // Apply label
-      await applyQualityLabel(event.did, result.tier)
-
-      // Log to activity DB
-      logActivity({
-        did: event.did,
-        rkey: event.commit.rkey,
-        uri: `at://${event.did}/${ACTIVITY_COLLECTION}/${event.commit.rkey}`,
-        title: record.title,
+      tier = result.tier
+      updateActivity(event.did, event.commit.rkey, {
         score: result.totalScore,
         tier: result.tier,
         breakdown: JSON.stringify(result.breakdown),
         testSignals: JSON.stringify(result.testSignals),
-        labeledAt: new Date().toISOString(),
       })
-
       logger.info(
         { did: event.did, rkey: event.commit.rkey, score: result.totalScore, tier: result.tier },
-        `Scored ${event.did} rkey=${event.commit.rkey}: ${result.totalScore}/100 → ${result.tier}`
+        `Scored: ${result.totalScore}/100 → ${result.tier}`
       )
+
+      // Phase 3: Label — apply AT Proto label, can fail gracefully
+      try {
+        await applyQualityLabel(event.did, result.tier)
+      } catch (err) {
+        logger.error({ err, did: event.did }, 'Error applying label (score still saved)')
+      }
     } catch (err) {
-      logger.error({ err, did: event.did, rkey: event.commit.rkey }, 'Error processing activity record')
+      logger.error({ err, did: event.did, rkey: event.commit.rkey }, 'Error scoring activity (record still visible as pending)')
     }
   })
 
   jetstream.onUpdate(ACTIVITY_COLLECTION, async (event: CommitUpdateEvent<typeof ACTIVITY_COLLECTION>) => {
+    const record = event.commit.record as unknown as ActivityRecord
+
+    // Validate: must have title OR shortDescription
+    if (!record.title && !record.shortDescription) {
+      logger.warn({ did: event.did, rkey: event.commit.rkey }, 'Skipping record: no title or description')
+      return
+    }
+
+    // Phase 1: Detect — reset to 'pending' via upsert (INSERT OR REPLACE)
+    logActivity({
+      did: event.did,
+      rkey: event.commit.rkey,
+      uri: `at://${event.did}/${ACTIVITY_COLLECTION}/${event.commit.rkey}`,
+      title: record.title || 'Untitled',
+      score: 0,
+      tier: 'pending',
+      breakdown: JSON.stringify({}),
+      testSignals: JSON.stringify([]),
+      labeledAt: new Date().toISOString(),
+    })
+    logger.info({ did: event.did, rkey: event.commit.rkey }, 'Activity detected')
+
+    // Phase 2: Evaluate — score and update the pending record
     try {
-      const record = event.commit.record as unknown as ActivityRecord
-
-      // Validate minimally: must have title and shortDescription and createdAt
-      if (!record.title || !record.shortDescription || !record.createdAt) {
-        logger.warn({ did: event.did, rkey: event.commit.rkey }, 'Skipping update: missing required fields')
-        return
-      }
-
-      // Score the record
       const result = scoreActivity(record)
-
-      // Apply label
-      await applyQualityLabel(event.did, result.tier)
-
-      // Log to activity DB (INSERT OR REPLACE handles upsert)
-      logActivity({
-        did: event.did,
-        rkey: event.commit.rkey,
-        uri: `at://${event.did}/${ACTIVITY_COLLECTION}/${event.commit.rkey}`,
-        title: record.title,
+      updateActivity(event.did, event.commit.rkey, {
         score: result.totalScore,
         tier: result.tier,
         breakdown: JSON.stringify(result.breakdown),
         testSignals: JSON.stringify(result.testSignals),
-        labeledAt: new Date().toISOString(),
       })
-
       logger.info(
         { did: event.did, rkey: event.commit.rkey, score: result.totalScore, tier: result.tier },
-        `Re-scored ${event.did} rkey=${event.commit.rkey}: ${result.totalScore}/100 → ${result.tier} (update)`
+        `Scored: ${result.totalScore}/100 → ${result.tier}`
       )
+
+      // Phase 3: Label — apply AT Proto label, can fail gracefully
+      try {
+        await applyQualityLabel(event.did, result.tier)
+      } catch (err) {
+        logger.error({ err, did: event.did }, 'Error applying label (score still saved)')
+      }
     } catch (err) {
-      logger.error({ err, did: event.did, rkey: event.commit.rkey }, 'Error processing activity update')
+      logger.error({ err, did: event.did, rkey: event.commit.rkey }, 'Error scoring activity (record still visible as pending)')
     }
   })
 
