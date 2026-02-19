@@ -14,8 +14,8 @@ src/
 │   └── page.tsx           # Dashboard page
 ├── components/            # React components (all "use client")
 ├── labeler/               # Standalone labeler process (NO React/Next.js imports)
-│   ├── start.ts           # Entry point: Jetstream + LabelerServer
-│   ├── jetstream.ts       # Firehose consumer for activity records
+│   ├── start.ts           # Entry point: spawns Tap sidecar + LabelerServer
+│   ├── tap-consumer.ts    # Tap client, SimpleIndexer record handler
 │   ├── server.ts          # Label application logic
 │   ├── setup.ts           # Account setup (PDS-aware)
 │   ├── set-labels.ts      # Push label definitions

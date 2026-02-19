@@ -16,7 +16,7 @@ Monitors `org.hypercerts.claim.activity` records on the network and labels autho
 ## Quick Start
 
 ### Prerequisites
-- Node.js 20+
+- Node.js 22+
 - A Bluesky account dedicated to the labeler
 
 ### Setup
@@ -56,18 +56,22 @@ npm run dev:labeler    # Labeler backend on port 4100 + metrics on 4101
 
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌──────────────────┐
-│  AT Protocol    │    │  Labeler Process  │    │  Next.js         │
-│  Firehose       │───▶│  (port 4100)     │    │  Dashboard       │
-│  (Jetstream)    │    │                  │    │  (port 3000)     │
-└─────────────────┘    │  Score → Label   │    │                  │
-                       │  → Log to SQLite │    │  Reads from      │
-                       │                  │    │  activity-log.db │
-                       └────────┬─────────┘    └────────┬─────────┘
-                                │                       │
-                         ┌──────▼───────┐        ┌──────▼───────┐
-                         │ labels.db    │        │activity-log.db│
-                         │ (AT Proto)   │        │ (dashboard)  │
-                         └──────────────┘        └──────────────┘
+│  AT Protocol    │    │  Tap Sidecar     │    │  Next.js         │
+│  Relay          │───▶│  (port 2480)     │    │  Dashboard       │
+│  (firehose)     │    │  Backfill + Live │    │  (port 3000)     │
+└─────────────────┘    └────────┬─────────┘    │                  │
+                                │              │  Reads from      │
+                       ┌────────▼─────────┐    │  activity-log.db │
+                       │  Labeler Process  │    └────────┬─────────┘
+                       │  (port 4100)     │             │
+                       │  Score → Label   │      ┌──────▼───────┐
+                       │  → Log to SQLite │      │activity-log.db│
+                       └────────┬─────────┘      │ (dashboard)  │
+                                │                └──────────────┘
+                         ┌──────▼───────┐
+                         │ labels.db    │
+                         │ (AT Proto)   │
+                         └──────────────┘
 ```
 
 The labeler auto-detects the PDS for non-bsky.social accounts via DID document resolution, so it works seamlessly across any AT Protocol PDS.
@@ -100,7 +104,7 @@ Test detection: Regex patterns catch common test strings ("test", "asdf", "lorem
 | `npm run setup` | Initialize labeler account |
 | `npm run set-labels` | Push/update label definitions |
 | `npm run build` | Production build |
-| `npm run reset` | Clear databases and cursor (fresh start) |
+| `npm run reset` | Clear databases (fresh start) |
 
 ## Environment Variables
 
@@ -115,8 +119,10 @@ Test detection: Regex patterns catch common test strings ("test", "asdf", "lorem
 | `HOST` | 127.0.0.1 | Labeler server bind address |
 | `LABELER_PORT` | 4100 | Labeler server port |
 | `METRICS_PORT` | 4101 | Prometheus metrics port |
-| `FIREHOSE_URL` | wss://jetstream1.us-east.bsky.network/subscribe | Jetstream endpoint |
-| `CURSOR_UPDATE_INTERVAL` | 60000 | Cursor save interval (ms) |
+| `TAP_URL` | http://localhost:2480 | Tap sidecar HTTP URL |
+| `TAP_ADMIN_PASSWORD` | (empty) | Tap admin auth password |
+| `TAP_BIND` | `:2480` | Tap server bind address |
+| `TAP_DB_PATH` | `tap.db` | Tap SQLite database path |
 | `ACTIVITY_DB_PATH` | activity-log.db | Activity log database path |
 
 ## Production Deployment
@@ -139,6 +145,6 @@ server {
 
 - **Framework:** Next.js 15, TypeScript
 - **Styling:** Tailwind CSS v4, OKLCH colors
-- **Labeler:** @skyware/labeler, @skyware/jetstream
+- **Labeler:** @skyware/labeler, @atproto/tap, indigo/tap
 - **Database:** SQLite (better-sqlite3)
 - **Design:** Inspired by [Hyperscan](https://hyperscan.dev)
