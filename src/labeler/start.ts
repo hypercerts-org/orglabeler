@@ -2,7 +2,7 @@ import 'dotenv/config'
 import fs from 'node:fs'
 import { HOST, LABELER_PORT, METRICS_PORT, CURSOR_UPDATE_INTERVAL } from '../lib/config'
 import { labelerServer } from './server'
-import { createJetstream, setupHandlers } from './jetstream'
+import { startJetstreamSubscription } from './jetstream'
 import { startMetricsServer } from './metrics'
 import logger from './logger'
 
@@ -32,13 +32,7 @@ async function main() {
   const cursor = readCursor()
   logger.info({ cursor }, 'Starting labeler process')
 
-  // 2. Create Jetstream with cursor
-  const jetstream = createJetstream(cursor)
-
-  // 3. Setup handlers
-  setupHandlers(jetstream)
-
-  // 4. Start LabelerServer on LABELER_PORT + HOST
+  // 2. Start LabelerServer on LABELER_PORT + HOST
   await new Promise<void>((resolve, reject) => {
     labelerServer.start({ port: LABELER_PORT, host: HOST }, (err, address) => {
       if (err) {
@@ -50,32 +44,34 @@ async function main() {
     })
   })
 
-  // 5. Start metrics server on METRICS_PORT
+  // 3. Start metrics server on METRICS_PORT
   startMetricsServer(METRICS_PORT)
   logger.info({ port: METRICS_PORT }, 'Metrics server started')
 
-  // 6. Start Jetstream
-  jetstream.start()
-  logger.info('Jetstream started')
+  // 4. Start Jetstream subscription with cursor
+  const subscription = startJetstreamSubscription(cursor)
+  logger.info('Jetstream subscription started')
 
-  // 7. Set interval to persist cursor to cursor.txt every CURSOR_UPDATE_INTERVAL
+  // 5. Set interval to persist cursor to cursor.txt every CURSOR_UPDATE_INTERVAL
   const cursorInterval = setInterval(() => {
-    if (jetstream.cursor !== undefined) {
-      writeCursor(jetstream.cursor)
-      logger.debug({ cursor: jetstream.cursor }, 'Cursor persisted')
+    const current = subscription.getCursor()
+    if (current !== undefined) {
+      writeCursor(current)
+      logger.debug({ cursor: current }, 'Cursor persisted')
     }
   }, CURSOR_UPDATE_INTERVAL)
 
-  // 8. Handle SIGINT/SIGTERM: save cursor, close jetstream, stop servers
+  // 6. Handle SIGINT/SIGTERM: save cursor, close subscription, stop servers
   async function shutdown(signal: string) {
     logger.info({ signal }, 'Shutting down...')
     clearInterval(cursorInterval)
 
-    if (jetstream.cursor !== undefined) {
-      writeCursor(jetstream.cursor)
+    const current = subscription.getCursor()
+    if (current !== undefined) {
+      writeCursor(current)
     }
 
-    jetstream.close()
+    subscription.dispose()
 
     await new Promise<void>((resolve) => {
       labelerServer.close(() => resolve())
