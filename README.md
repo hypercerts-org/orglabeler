@@ -1,4 +1,4 @@
-# Certified Labeler
+# Hyperlabel
 
 > Automated quality scoring for hypercert activity records on AT Protocol
 
@@ -22,7 +22,7 @@ Monitors `org.hypercerts.claim.activity` records on the network and labels autho
 ### Setup
 ```bash
 git clone <repo>
-cd certified-labeler
+cd hyperlabel
 npm install
 
 # Works with any AT Protocol PDS (not just bsky.social)

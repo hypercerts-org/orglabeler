@@ -33,7 +33,7 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'Certified Labeler',
+  title: 'Hyperlabel',
   description: 'Monitoring hypercert activity quality across the hypersphere.',
 }
 

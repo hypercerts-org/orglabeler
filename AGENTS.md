@@ -1,6 +1,6 @@
 # Agent Instructions
 
-This is the **Certified Labeler** — an AT Protocol labeler for scoring hypercert activity quality.
+This is the **Hyperlabel** — an AT Protocol labeler for scoring hypercert activity quality.
 
 ## Project Structure
 
