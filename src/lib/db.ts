@@ -155,6 +155,21 @@ export function getStats(): LabelStats {
   }
 }
 
+// Get all activities with tier = 'pending' (stale records from deploy race conditions)
+export function getPendingActivities(): ActivityLogEntry[] {
+  const db = getDb()
+  const rows = db.prepare(
+    'SELECT id, did, rkey, uri, title, score, tier, breakdown, test_signals, labeled_at FROM activities WHERE tier = ?'
+  ).all('pending') as Array<Record<string, unknown>>
+  return rows.map(rowToEntry)
+}
+
+// Delete a single activity by did + rkey
+export function deleteActivity(did: string, rkey: string): void {
+  const db = getDb()
+  db.prepare('DELETE FROM activities WHERE did = ? AND rkey = ?').run(did, rkey)
+}
+
 function rowToEntry(row: Record<string, unknown>): ActivityLogEntry {
   return {
     id: row['id'] as number,

@@ -2,6 +2,7 @@ import 'dotenv/config'
 import fs from 'node:fs'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { HOST, LABELER_PORT, METRICS_PORT, TAP_URL, TAP_BIND, TAP_DB_PATH, ACTIVITY_COLLECTION } from '../lib/config'
+import { getPendingActivities, deleteActivity } from '../lib/db'
 import { labelerServer } from './server'
 import { startTapConsumer } from './tap-consumer'
 import { startMetricsServer } from './metrics'
@@ -90,6 +91,15 @@ async function main() {
   // 5. Start tap consumer (replaces Jetstream subscription)
   const consumer = startTapConsumer()
   logger.info('Tap consumer started — receiving backfill + live events')
+
+  // 5b. Clean up any stale pending records from previous deploys
+  const pendingRecords = getPendingActivities()
+  if (pendingRecords.length > 0) {
+    logger.warn({ count: pendingRecords.length }, 'Deleting stale pending records — they will be re-scored on next tap event')
+    for (const record of pendingRecords) {
+      deleteActivity(record.did, record.rkey)
+    }
+  }
 
   // 6. Shutdown handler
   async function shutdown(signal: string) {
