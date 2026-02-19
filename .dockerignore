@@ -1,0 +1,10 @@
+node_modules
+.next
+.env
+*.db
+*.db-shm
+*.db-wal
+cursor.txt
+*.log
+.git
+.beads

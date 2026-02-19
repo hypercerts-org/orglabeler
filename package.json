@@ -8,6 +8,7 @@
     "start": "next start",
     "dev:labeler": "tsx src/labeler/start.ts",
     "dev:all": "concurrently --names \"next,labeler\" --prefix-colors \"blue,green\" \"npm run dev\" \"npm run dev:labeler\"",
+    "start:all": "concurrently --names \"next,labeler\" --prefix-colors \"blue,green\" \"npm run start\" \"npm run dev:labeler\"",
     "set-labels": "tsx src/labeler/set-labels.ts",
     "setup": "tsx src/labeler/setup.ts",
     "reset": "tsx src/labeler/reset-db.ts"
@@ -31,7 +32,9 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwindcss": "^4.0.0",
-    "ws": "^8.19.0"
+    "ws": "^8.19.0",
+    "concurrently": "^9.2.1",
+    "tsx": "^4.0.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.0",
@@ -40,8 +43,6 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/ws": "^8.18.1",
-    "concurrently": "^9.2.1",
-    "tsx": "^4.0.0",
     "typescript": "^5.0.0"
   }
 }
