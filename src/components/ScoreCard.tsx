@@ -44,7 +44,8 @@ export function ScoreCard({ entry, defaultExpanded = false }: ScoreCardProps) {
     ? JSON.parse(entry.testSignals)
     : entry.testSignals
 
-  const truncatedDid = entry.did.slice(0, 20)
+  const shortDid = entry.did.replace('did:plc:', '').slice(0, 12) + '…'
+  const hyperscanUrl = `https://www.hyperscan.dev/data?did=${encodeURIComponent(entry.did)}&collection=org.hypercerts.claim.activity&rkey=${entry.rkey}`
   const barColor = TIER_BAR_COLORS[entry.tier]
   const relativeTime = getRelativeTime(entry.labeledAt)
 
@@ -55,13 +56,30 @@ export function ScoreCard({ entry, defaultExpanded = false }: ScoreCardProps) {
     >
       {/* Header row */}
       <div className='flex items-center justify-between px-3 py-2.5'>
-        <span className='font-mono text-[11px] text-muted-foreground'>{truncatedDid}</span>
+        <a
+          href={hyperscanUrl}
+          target='_blank'
+          rel='noopener noreferrer'
+          className='font-mono text-[11px] text-muted-foreground hover:text-foreground hover:underline'
+          onClick={e => e.stopPropagation()}
+        >
+          <span className='text-muted-foreground/50'>did:plc:</span>{shortDid}
+        </a>
         <span className='text-[10px] text-muted-foreground/60'>{relativeTime}</span>
       </div>
 
       {/* Title row */}
       <div className='px-3 pb-1'>
-        <p className='text-sm font-medium text-foreground truncate'>{entry.title}</p>
+        <a
+          href={hyperscanUrl}
+          target='_blank'
+          rel='noopener noreferrer'
+          className='text-sm font-medium text-foreground truncate hover:text-primary hover:underline inline-flex items-center gap-1 max-w-full'
+          onClick={e => e.stopPropagation()}
+        >
+          <span className='truncate'>{entry.title}</span>
+          <span className='text-muted-foreground shrink-0'>↗</span>
+        </a>
       </div>
 
       {/* Score bar + badge row */}
