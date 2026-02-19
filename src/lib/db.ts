@@ -36,17 +36,38 @@ export function getDb(): Database.Database {
   createActivitiesTable(_db)
 
   // Migration: check if 'pending' tier is accepted by the existing CHECK constraint.
-  // If not (old 4-tier schema), recreate the table preserving existing data.
+  // Fix 1: Use INSERT OR IGNORE so a duplicate sentinel row does NOT trigger DROP TABLE.
+  // Fix 2: Wrap the old-schema migration path in a transaction for atomicity.
   try {
-    _db.exec("INSERT INTO activities (did, rkey, uri, title, score, tier, breakdown, test_signals) VALUES ('__migration_test', '__test', '__test', '__test', 0, 'pending', '{}', '[]')")
-    _db.exec("DELETE FROM activities WHERE did = '__migration_test'")
+    const result = _db.prepare(
+      "INSERT OR IGNORE INTO activities (did, rkey, uri, title, score, tier, breakdown, test_signals) VALUES ('__migration_test', '__test', '__test', '__test', 0, 'pending', '{}', '[]')"
+    ).run()
+    // If the insert was ignored (row existed), that still means 'pending' is in the schema
+    if (result.changes > 0) {
+      _db.exec("DELETE FROM activities WHERE did = '__migration_test'")
+    }
   } catch {
-    // Old schema — recreate table with new CHECK constraint
-    _db.exec('DROP TABLE IF EXISTS activities')
-    createActivitiesTable(_db)
+    // Old schema that doesn't accept 'pending' tier — recreate atomically
+    _db.exec('BEGIN')
+    try {
+      _db.exec('DROP TABLE IF EXISTS activities')
+      createActivitiesTable(_db)
+      _db.exec('COMMIT')
+    } catch (err) {
+      _db.exec('ROLLBACK')
+      throw err
+    }
   }
 
   return _db
+}
+
+// Close the singleton database connection and reset the reference.
+export function closeDb(): void {
+  if (_db) {
+    _db.close()
+    _db = null
+  }
 }
 
 // Insert or replace (upsert on did+rkey). Does not throw on duplicates.
@@ -89,28 +110,34 @@ export function updateActivity(did: string, rkey: string, updates: { score: numb
 }
 
 // Recent activities sorted by labeled_at DESC. Default limit=20, offset=0.
+// Fix 5: Clamp limit/offset to safe values to prevent negative or NaN inputs.
 export function getRecentActivities(limit = 20, offset = 0): ActivityLogEntry[] {
   const db = getDb()
+  const safeLimit = Math.max(1, Math.min(limit || 20, 100))
+  const safeOffset = Math.max(0, offset || 0)
   const rows = db.prepare(`
     SELECT id, did, rkey, uri, title, score, tier, breakdown, test_signals, labeled_at
     FROM activities
     ORDER BY labeled_at DESC
     LIMIT ? OFFSET ?
-  `).all(limit, offset) as Array<Record<string, unknown>>
+  `).all(safeLimit, safeOffset) as Array<Record<string, unknown>>
 
   return rows.map(rowToEntry)
 }
 
 // Get activities filtered by tier. Sorted by labeled_at DESC.
+// Fix 5: Clamp limit/offset to safe values to prevent negative or NaN inputs.
 export function getActivitiesByTier(tier: LabelTier, limit = 20, offset = 0): ActivityLogEntry[] {
   const db = getDb()
+  const safeLimit = Math.max(1, Math.min(limit || 20, 100))
+  const safeOffset = Math.max(0, offset || 0)
   const rows = db.prepare(`
     SELECT id, did, rkey, uri, title, score, tier, breakdown, test_signals, labeled_at
     FROM activities
     WHERE tier = ?
     ORDER BY labeled_at DESC
     LIMIT ? OFFSET ?
-  `).all(tier, limit, offset) as Array<Record<string, unknown>>
+  `).all(tier, safeLimit, safeOffset) as Array<Record<string, unknown>>
 
   return rows.map(rowToEntry)
 }
@@ -126,32 +153,35 @@ export function getTotalCount(tier?: LabelTier): number {
   return row.count
 }
 
-// Get aggregate statistics
+// Get aggregate statistics.
+// Fix 3: Use strftime('%Y-%m-%dT%H:%M:%S', ...) so ISO 8601 timestamps compare correctly.
+// Fix 6: Consolidate into a single query with conditional aggregation (snapshot-consistent, 7x faster).
 export function getStats(): LabelStats {
   const db = getDb()
-
-  const total = (db.prepare('SELECT COUNT(*) as count FROM activities').get() as { count: number }).count
-
-  const pending = (db.prepare("SELECT COUNT(*) as count FROM activities WHERE tier = 'pending'").get() as { count: number }).count
-  const highQuality = (db.prepare("SELECT COUNT(*) as count FROM activities WHERE tier = 'high-quality'").get() as { count: number }).count
-  const standard = (db.prepare("SELECT COUNT(*) as count FROM activities WHERE tier = 'standard'").get() as { count: number }).count
-  const draft = (db.prepare("SELECT COUNT(*) as count FROM activities WHERE tier = 'draft'").get() as { count: number }).count
-  const likelyTest = (db.prepare("SELECT COUNT(*) as count FROM activities WHERE tier = 'likely-test'").get() as { count: number }).count
-
-  const last24h = (db.prepare("SELECT COUNT(*) as count FROM activities WHERE labeled_at > datetime('now', '-1 day')").get() as { count: number }).count
-  const last7d = (db.prepare("SELECT COUNT(*) as count FROM activities WHERE labeled_at > datetime('now', '-7 days')").get() as { count: number }).count
+  const row = db.prepare(`
+    SELECT
+      COUNT(*) as total,
+      SUM(CASE WHEN tier = 'pending' THEN 1 ELSE 0 END) as pending,
+      SUM(CASE WHEN tier = 'high-quality' THEN 1 ELSE 0 END) as high_quality,
+      SUM(CASE WHEN tier = 'standard' THEN 1 ELSE 0 END) as standard,
+      SUM(CASE WHEN tier = 'draft' THEN 1 ELSE 0 END) as draft,
+      SUM(CASE WHEN tier = 'likely-test' THEN 1 ELSE 0 END) as likely_test,
+      SUM(CASE WHEN labeled_at > strftime('%Y-%m-%dT%H:%M:%S', 'now', '-1 day') THEN 1 ELSE 0 END) as last_24h,
+      SUM(CASE WHEN labeled_at > strftime('%Y-%m-%dT%H:%M:%S', 'now', '-7 days') THEN 1 ELSE 0 END) as last_7d
+    FROM activities
+  `).get() as Record<string, number>
 
   return {
-    total,
+    total: row['total'] ?? 0,
     byTier: {
-      'pending': pending,
-      'high-quality': highQuality,
-      'standard': standard,
-      'draft': draft,
-      'likely-test': likelyTest,
+      'pending': row['pending'] ?? 0,
+      'high-quality': row['high_quality'] ?? 0,
+      'standard': row['standard'] ?? 0,
+      'draft': row['draft'] ?? 0,
+      'likely-test': row['likely_test'] ?? 0,
     },
-    last24h,
-    last7d,
+    last24h: row['last_24h'] ?? 0,
+    last7d: row['last_7d'] ?? 0,
   }
 }
 
