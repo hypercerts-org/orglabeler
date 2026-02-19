@@ -67,12 +67,16 @@ export function ScoreCard({ entry, defaultExpanded = false }: ScoreCardProps) {
       {/* Score bar + badge row */}
       <div className='flex items-center gap-2 px-3 pb-2.5'>
         <div className='flex-1 h-1.5 rounded-full bg-secondary overflow-hidden'>
-          <div
-            className={`h-full rounded-full ${barColor}`}
-            style={{ width: `${entry.score}%` }}
-          />
+          {entry.tier === 'pending' ? (
+            <div className='h-full w-full bg-violet-500/40 animate-pulse rounded-full' />
+          ) : (
+            <div
+              className={`h-full rounded-full ${barColor}`}
+              style={{ width: `${entry.score}%` }}
+            />
+          )}
         </div>
-        <ScoreBadge tier={entry.tier} score={entry.score} />
+        <ScoreBadge tier={entry.tier} score={entry.tier === 'pending' ? undefined : entry.score} />
       </div>
 
       {/* Expandable breakdown */}
@@ -82,7 +86,11 @@ export function ScoreCard({ entry, defaultExpanded = false }: ScoreCardProps) {
       >
         <div className='overflow-hidden'>
           <div className='px-3 py-2.5 border-t border-border/50'>
-            <ScoreBreakdown breakdown={breakdown} testSignals={testSignals} />
+            {entry.tier === 'pending' ? (
+              <p className='text-xs text-muted-foreground italic animate-pulse'>Evaluating record quality...</p>
+            ) : (
+              <ScoreBreakdown breakdown={breakdown} testSignals={testSignals} />
+            )}
           </div>
         </div>
       </div>
