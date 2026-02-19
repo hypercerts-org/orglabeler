@@ -15,3 +15,7 @@ export const LABELS_DB_PATH = process.env.LABELS_DB_PATH ?? 'labels.db'
 export const CURSOR_PATH = process.env.CURSOR_PATH ?? 'cursor.txt'
 export const LABELER_ENDPOINT = process.env.LABELER_ENDPOINT ?? ''
 export const PDS_URL = process.env.PDS_URL ?? ""
+export const TAP_URL = process.env.TAP_URL ?? 'http://localhost:2480'
+export const TAP_ADMIN_PASSWORD = process.env.TAP_ADMIN_PASSWORD ?? ''
+export const TAP_BIND = process.env.TAP_BIND ?? ':2480'
+export const TAP_DB_PATH = process.env.TAP_DB_PATH ?? 'tap.db'
