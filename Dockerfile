@@ -1,7 +1,14 @@
+# Stage 1: Get tap binary from official image
+FROM ghcr.io/bluesky-social/indigo/tap:latest AS tap-bin
+
+# Stage 2: Build and run the application
 FROM node:22-slim
 
-# better-sqlite3 needs build tools
-RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
+# better-sqlite3 needs build tools; musl is needed for the tap binary (Alpine-built)
+RUN apt-get update && apt-get install -y python3 make g++ musl && rm -rf /var/lib/apt/lists/*
+
+# Copy tap binary from the official image
+COPY --from=tap-bin /tap /usr/local/bin/tap
 
 WORKDIR /app
 
@@ -15,8 +22,8 @@ COPY . .
 # Build Next.js
 RUN npm run build
 
-# Expose ports: Next.js (3000), LabelerServer (4100), Metrics (4101)
-EXPOSE 3000 4100 4101
+# Expose ports: Next.js (3000), LabelerServer (4100), Metrics (4101), Tap (2480)
+EXPOSE 3000 4100 4101 2480
 
 # Run both processes with concurrently
 CMD ["npm", "run", "start:all"]
