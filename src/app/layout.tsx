@@ -3,6 +3,7 @@ import { Syne, Outfit, Geist, Geist_Mono } from 'next/font/google'
 import type { Metadata } from 'next'
 import { ThemeProvider } from '@/components/ThemeProvider'
 import { GeometricBackground } from '@/components/GeometricBackground'
+import { Header } from '@/components/Header'
 import './globals.css'
 
 const syne = Syne({
@@ -45,6 +46,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <ThemeProvider>
           <div className='relative min-h-screen overflow-hidden flex flex-col'>
             <GeometricBackground />
+            <Header />
             <main className='relative flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 pb-8'>
               {children}
             </main>
