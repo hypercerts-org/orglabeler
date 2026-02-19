@@ -1,9 +1,9 @@
 import { LabelerServer } from '@skyware/labeler'
-import { DID, SIGNING_KEY } from '../lib/config'
+import { DID, SIGNING_KEY, LABELS_DB_PATH } from '../lib/config'
 import { QUALITY_LABEL_IDENTIFIERS } from '../lib/constants'
 import logger from './logger'
 
-export const labelerServer = new LabelerServer({ did: DID, signingKey: SIGNING_KEY })
+export const labelerServer = new LabelerServer({ did: DID, signingKey: SIGNING_KEY, dbPath: LABELS_DB_PATH })
 
 export async function fetchCurrentLabels(did: string): Promise<Set<string>> {
   await labelerServer.db.execute('SELECT 1') // ensure db is ready

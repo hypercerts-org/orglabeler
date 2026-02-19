@@ -1,12 +1,12 @@
 import 'dotenv/config'
 import fs from 'node:fs'
-import { HOST, LABELER_PORT, METRICS_PORT, CURSOR_UPDATE_INTERVAL } from '../lib/config'
+import { HOST, LABELER_PORT, METRICS_PORT, CURSOR_UPDATE_INTERVAL, CURSOR_PATH } from '../lib/config'
 import { labelerServer } from './server'
 import { startJetstreamSubscription } from './jetstream'
 import { startMetricsServer } from './metrics'
 import logger from './logger'
 
-const CURSOR_FILE = 'cursor.txt'
+const CURSOR_FILE = CURSOR_PATH
 
 // 1. Read cursor from cursor.txt (or create at Date.now() * 1000)
 function readCursor(): number {
