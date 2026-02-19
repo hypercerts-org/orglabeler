@@ -16,3 +16,14 @@ export const TAP_URL = process.env.TAP_URL ?? 'http://localhost:2480'
 export const TAP_ADMIN_PASSWORD = process.env.TAP_ADMIN_PASSWORD ?? ''
 export const TAP_BIND = process.env.TAP_BIND ?? ':2480'
 export const TAP_DB_PATH = process.env.TAP_DB_PATH ?? 'tap.db'
+
+export function validateLabelerConfig(): void {
+  const required: [string, string][] = [
+    ['DID', DID],
+    ['SIGNING_KEY', SIGNING_KEY],
+  ]
+  const missing = required.filter(([, val]) => !val).map(([name]) => name)
+  if (missing.length > 0) {
+    throw new Error(`Missing required environment variables: ${missing.join(', ')}. Check your .env file.`)
+  }
+}
