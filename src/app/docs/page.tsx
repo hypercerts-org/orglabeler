@@ -176,22 +176,22 @@ export default function DocsPage() {
           {[
             {
               tier: 'high-quality' as const,
-              range: '70 – 100',
+              range: '75 – 100',
               detail: 'Well-documented record with comprehensive activity details.',
             },
             {
               tier: 'standard' as const,
-              range: '40 – 69',
+              range: '50 – 74',
               detail: 'Adequate record with basic activity information filled in.',
             },
             {
               tier: 'draft' as const,
-              range: '15 – 39',
+              range: '20 – 49',
               detail: 'Minimal record — appears to be a work in progress.',
             },
             {
               tier: 'likely-test' as const,
-              range: '0 – 14 or test signals',
+              range: '0 – 19 or test signals',
               detail: 'Contains test or placeholder data (e.g. "Test", "asdf", lorem ipsum, repeated characters).',
             },
           ].map(({ tier, range, detail }) => (

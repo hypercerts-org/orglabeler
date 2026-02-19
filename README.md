@@ -8,10 +8,10 @@ Monitors `org.hypercerts.claim.activity` records on the network and labels autho
 
 | Label | Score | Meaning |
 |-------|-------|---------|
-| ✦ High Quality | 70-100 | Well-documented, comprehensive activity claim |
-| ● Standard | 40-69 | Adequate but could be more detailed |
-| ◌ Draft | 15-39 | Minimal information, work in progress |
-| ⚠ Likely Test | 0-14 | Spam or placeholder data |
+| ✦ High Quality | 75-100 | Well-documented, comprehensive activity claim |
+| ● Standard | 50-74 | Adequate but could be more detailed |
+| ◌ Draft | 20-49 | Minimal information, work in progress |
+| ⚠ Likely Test | 0-19 | Spam or placeholder data |
 
 ## Quick Start
 
