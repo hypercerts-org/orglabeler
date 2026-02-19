@@ -1,0 +1,110 @@
+'use client'
+
+import { useState, useEffect, useCallback } from 'react'
+import { ActivityFeed } from '@/components/ActivityFeed'
+import type { LabelTier, ActivityLogEntry } from '@/lib/types'
+
+const filterOptions: { label: string; value: LabelTier | 'all' }[] = [
+  { label: 'All', value: 'all' },
+  { label: '✦ High Quality', value: 'high-quality' },
+  { label: '● Standard', value: 'standard' },
+  { label: '◌ Draft', value: 'draft' },
+  { label: '⚠ Likely Test', value: 'likely-test' },
+]
+
+const LIMIT = 20
+
+export default function FeedPage() {
+  const [selectedTier, setSelectedTier] = useState<LabelTier | 'all'>('all')
+  const [activities, setActivities] = useState<ActivityLogEntry[]>([])
+  const [total, setTotal] = useState(0)
+  const [offset, setOffset] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+
+  const fetchActivities = useCallback(
+    async (reset = false) => {
+      const currentOffset = reset ? 0 : offset
+      if (reset) setLoading(true)
+      else setLoadingMore(true)
+
+      try {
+        const tierParam = selectedTier === 'all' ? '' : `&tier=${selectedTier}`
+        const res = await fetch(
+          `/api/recent?limit=${LIMIT}&offset=${currentOffset}${tierParam}`
+        )
+        const data = await res.json()
+
+        if (reset) {
+          setActivities(data.activities)
+          setOffset(LIMIT)
+        } else {
+          setActivities(prev => [...prev, ...data.activities])
+          setOffset(prev => prev + LIMIT)
+        }
+        setTotal(data.total)
+      } catch (error) {
+        console.error('Failed to fetch activities:', error)
+      } finally {
+        setLoading(false)
+        setLoadingMore(false)
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectedTier, offset]
+  )
+
+  // Reset and re-fetch when tier changes
+  useEffect(() => {
+    fetchActivities(true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTier])
+
+  const handleLoadMore = () => {
+    fetchActivities(false)
+  }
+
+  return (
+    <div className='py-8 space-y-5 animate-fade-in-up'>
+      {/* Heading */}
+      <div>
+        <h1 className='font-[family-name:var(--font-syne)] text-2xl font-bold'>
+          Activity Feed
+        </h1>
+        <p className='text-sm text-muted-foreground mt-1'>
+          All scored hypercert activity records.
+        </p>
+      </div>
+
+      {/* Tier filter + activity count */}
+      <div className='flex items-center gap-3 flex-wrap'>
+        <div className='flex items-center gap-1 border border-border rounded-lg p-0.5 w-fit'>
+          {filterOptions.map(option => (
+            <button
+              key={option.value}
+              onClick={() => setSelectedTier(option.value)}
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+                selectedTier === option.value
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <span className='text-[11px] text-muted-foreground'>
+          {total} activities
+        </span>
+      </div>
+
+      {/* Activity feed with load more */}
+      <ActivityFeed
+        activities={activities}
+        loading={loading || loadingMore}
+        showLoadMore={activities.length < total && !loading}
+        onLoadMore={handleLoadMore}
+      />
+    </div>
+  )
+}
