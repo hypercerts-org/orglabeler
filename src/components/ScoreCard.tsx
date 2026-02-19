@@ -26,6 +26,7 @@ function getRelativeTime(isoTimestamp: string): string {
 }
 
 const TIER_BAR_COLORS: Record<LabelTier, string> = {
+  'pending': 'bg-violet-500/60',
   'high-quality': 'bg-emerald-500/60',
   'standard': 'bg-blue-500/60',
   'draft': 'bg-amber-500/60',

@@ -2,6 +2,10 @@ import type { LabelDefinition, LabelTier } from './types'
 
 export const LABELS: LabelDefinition[] = [
   {
+    identifier: 'pending',
+    locales: [{ lang: 'en', name: '⟳ Pending', description: 'Record detected, evaluation in progress.' }],
+  },
+  {
     identifier: 'high-quality',
     locales: [{ lang: 'en', name: '✦ High Quality', description: 'Well-documented hypercert with comprehensive activity details.' }],
   },
@@ -20,6 +24,7 @@ export const LABELS: LabelDefinition[] = [
 ]
 
 export const SCORE_THRESHOLDS: Record<LabelTier, { min: number; max: number }> = {
+  'pending': { min: -1, max: -1 },
   'high-quality': { min: 70, max: 100 },
   'standard': { min: 40, max: 69 },
   'draft': { min: 15, max: 39 },
@@ -34,4 +39,4 @@ export const TEST_PATTERNS: RegExp[] = [
 ]
 
 export const LABEL_LIMIT = 1
-export const QUALITY_LABEL_IDENTIFIERS = ['high-quality', 'standard', 'draft', 'likely-test']
+export const QUALITY_LABEL_IDENTIFIERS = ['pending', 'high-quality', 'standard', 'draft', 'likely-test']

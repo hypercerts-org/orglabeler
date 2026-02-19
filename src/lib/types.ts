@@ -23,7 +23,7 @@ export interface ActivityContributor {
 }
 
 // Scoring
-export type LabelTier = 'high-quality' | 'standard' | 'draft' | 'likely-test'
+export type LabelTier = 'pending' | 'high-quality' | 'standard' | 'draft' | 'likely-test'
 
 export interface ScoreResult {
   totalScore: number       // 0-100 normalized

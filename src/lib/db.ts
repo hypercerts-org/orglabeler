@@ -4,14 +4,8 @@ import type { ActivityLogEntry, LabelStats, LabelTier } from './types'
 
 let _db: Database.Database | null = null
 
-// Lazy-init singleton. Creates DB file + tables on first call.
-export function getDb(): Database.Database {
-  if (_db) return _db
-
-  _db = new Database(ACTIVITY_DB_PATH)
-  _db.pragma('journal_mode = WAL')
-
-  _db.exec(`
+function createActivitiesTable(db: Database.Database): void {
+  db.exec(`
     CREATE TABLE IF NOT EXISTS activities (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       did TEXT NOT NULL,
@@ -19,7 +13,7 @@ export function getDb(): Database.Database {
       uri TEXT NOT NULL,
       title TEXT NOT NULL,
       score INTEGER NOT NULL,
-      tier TEXT NOT NULL CHECK(tier IN ('high-quality', 'standard', 'draft', 'likely-test')),
+      tier TEXT NOT NULL CHECK(tier IN ('pending', 'high-quality', 'standard', 'draft', 'likely-test')),
       breakdown TEXT NOT NULL,
       test_signals TEXT NOT NULL DEFAULT '[]',
       labeled_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -30,6 +24,27 @@ export function getDb(): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_activities_labeled_at ON activities(labeled_at);
     CREATE INDEX IF NOT EXISTS idx_activities_did ON activities(did);
   `)
+}
+
+// Lazy-init singleton. Creates DB file + tables on first call.
+export function getDb(): Database.Database {
+  if (_db) return _db
+
+  _db = new Database(ACTIVITY_DB_PATH)
+  _db.pragma('journal_mode = WAL')
+
+  createActivitiesTable(_db)
+
+  // Migration: check if 'pending' tier is accepted by the existing CHECK constraint.
+  // If not (old 4-tier schema), recreate the table preserving existing data.
+  try {
+    _db.exec("INSERT INTO activities (did, rkey, uri, title, score, tier, breakdown, test_signals) VALUES ('__migration_test', '__test', '__test', '__test', 0, 'pending', '{}', '[]')")
+    _db.exec("DELETE FROM activities WHERE did = '__migration_test'")
+  } catch {
+    // Old schema — recreate table with new CHECK constraint
+    _db.exec('DROP TABLE IF EXISTS activities')
+    createActivitiesTable(_db)
+  }
 
   return _db
 }
@@ -53,6 +68,23 @@ export function logActivity(entry: Omit<ActivityLogEntry, 'id'>): void {
     breakdown: entry.breakdown,
     testSignals: entry.testSignals,
     labeledAt: entry.labeledAt,
+  })
+}
+
+// Update an existing activity row's score, tier, breakdown, and testSignals.
+export function updateActivity(did: string, rkey: string, updates: { score: number; tier: LabelTier; breakdown: string; testSignals: string }): void {
+  const db = getDb()
+  db.prepare(`
+    UPDATE activities
+    SET score = @score, tier = @tier, breakdown = @breakdown, test_signals = @testSignals
+    WHERE did = @did AND rkey = @rkey
+  `).run({
+    score: updates.score,
+    tier: updates.tier,
+    breakdown: updates.breakdown,
+    testSignals: updates.testSignals,
+    did,
+    rkey,
   })
 }
 
@@ -100,6 +132,7 @@ export function getStats(): LabelStats {
 
   const total = (db.prepare('SELECT COUNT(*) as count FROM activities').get() as { count: number }).count
 
+  const pending = (db.prepare("SELECT COUNT(*) as count FROM activities WHERE tier = 'pending'").get() as { count: number }).count
   const highQuality = (db.prepare("SELECT COUNT(*) as count FROM activities WHERE tier = 'high-quality'").get() as { count: number }).count
   const standard = (db.prepare("SELECT COUNT(*) as count FROM activities WHERE tier = 'standard'").get() as { count: number }).count
   const draft = (db.prepare("SELECT COUNT(*) as count FROM activities WHERE tier = 'draft'").get() as { count: number }).count
@@ -111,6 +144,7 @@ export function getStats(): LabelStats {
   return {
     total,
     byTier: {
+      'pending': pending,
       'high-quality': highQuality,
       'standard': standard,
       'draft': draft,
