@@ -36,6 +36,19 @@ export function scoreActivity(record: ActivityRecord): ScoreResult {
     testSignals.push('title extremely short')
   }
 
+  // Title ends with trailing small number (template spam pattern)
+  // e.g. "Clean Energy Community Initiative 37" but NOT short titles like "Phase 2"
+  if (/^.{15,}\s+\d{1,2}$/.test(title.trim())) {
+    testSignals.push('title ends with trailing number (template spam)')
+  }
+
+  // Title first 4 words duplicate shortDescription first 4 words (copy-paste signal)
+  const titleWords = title.trim().toLowerCase().split(/\s+/).slice(0, 4).join(' ')
+  const shortWords = shortDesc.trim().toLowerCase().split(/\s+/).slice(0, 4).join(' ')
+  if (titleWords.length > 10 && titleWords === shortWords) {
+    testSignals.push('title duplicates start of short description')
+  }
+
   // --- Scoring ---
 
   // 1. titleQuality (0-15)

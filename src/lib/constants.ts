@@ -24,18 +24,32 @@ export const LABELS: LabelDefinition[] = [
 ]
 
 export const SCORE_THRESHOLDS: Record<LabelTier, { min: number; max: number }> = {
-  'pending': { min: -1, max: -1 },
-  'high-quality': { min: 70, max: 100 },
-  'standard': { min: 40, max: 69 },
-  'draft': { min: 15, max: 39 },
-  'likely-test': { min: 0, max: 14 },
+  'pending':      { min: -1, max: -1 },
+  'high-quality': { min: 75, max: 100 },
+  'standard':     { min: 50, max: 74 },
+  'draft':        { min: 20, max: 49 },
+  'likely-test':  { min: 0, max: 19 },
 }
 
 export const TEST_PATTERNS: RegExp[] = [
-  /^test$/i, /^testing$/i, /^asdf/i, /^hello$/i, /^foo$/i, /^bar$/i,
-  /^lorem ipsum/i, /^untitled$/i, /^sample$/i, /^example$/i,
-  /^aaa+$/i, /^xxx+$/i, /^placeholder/i, /^todo$/i, /^wip$/i,
-  /^delete me/i, /^ignore/i, /^abc$/i, /^123$/i, /^zzz/i,
+  // Word-boundary "test" — catches "Another Test", "Test Contributors", "This is testing", "test 123"
+  /\btest(ing|ed|er|s)?\b/i,
+
+  // Common junk prefixes
+  /^asdf/i, /^lorem ipsum/i, /^placeholder/i, /^delete me/i, /^ignore/i, /^zzz/i,
+
+  // Exact match common junk
+  /^foo$/i, /^bar$/i, /^abc$/i, /^123$/i, /^wip$/i, /^todo$/i,
+  /^untitled$/i, /^sample$/i, /^example$/i,
+  /^hello( there)?$/i, /^hi$/i, /^hey$/i,
+  /^this is fine$/i, /^no title$/i, /^n\/a$/i, /^none$/i, /^null$/i,
+  /^undefined$/i, /^blank$/i, /^draft$/i, /^temp$/i, /^tmp$/i,
+
+  // Repeated characters (aaa, xxx, etc.)
+  /^(.)\1{2,}$/,
+
+  // Title is just a number
+  /^\d+$/,
 ]
 
 export const LABEL_LIMIT = 1
