@@ -5,11 +5,11 @@ import logger from './logger'
 
 export const labelerServer = new LabelerServer({ did: DID, signingKey: SIGNING_KEY, dbPath: LABELS_DB_PATH })
 
-export async function fetchCurrentLabels(did: string): Promise<Set<string>> {
+export async function fetchCurrentLabels(uri: string): Promise<Set<string>> {
   await labelerServer.db.execute('SELECT 1') // ensure db is ready
   const result = await labelerServer.db.execute({
     sql: 'SELECT val, neg FROM labels WHERE uri = ?',
-    args: [did],
+    args: [uri],
   })
 
   const active = new Set<string>()
@@ -25,26 +25,26 @@ export async function fetchCurrentLabels(did: string): Promise<Set<string>> {
   return active
 }
 
-export async function applyQualityLabel(did: string, labelIdentifier: string): Promise<void> {
-  // 1. Fetch current labels for the DID
-  const currentLabels = await fetchCurrentLabels(did)
+export async function applyQualityLabel(recordUri: string, labelIdentifier: string): Promise<void> {
+  // 1. Fetch current labels for the record URI
+  const currentLabels = await fetchCurrentLabels(recordUri)
 
   // 2. Filter to only QUALITY_LABEL_IDENTIFIERS
   const currentQualityLabels = [...currentLabels].filter(l => QUALITY_LABEL_IDENTIFIERS.includes(l))
 
-  // 3. If DID already has the same quality label → return (no change needed)
+  // 3. If record already has the same quality label → return (no change needed)
   if (currentQualityLabels.includes(labelIdentifier)) {
-    logger.info({ did, label: labelIdentifier }, 'DID already has label, skipping')
+    logger.info({ uri: recordUri, label: labelIdentifier }, 'Record already has label, skipping')
     return
   }
 
-  // 4. If DID has a different quality label → negate it first
+  // 4. If record has a different quality label → negate it first
   if (currentQualityLabels.length > 0) {
-    logger.info({ did, negating: currentQualityLabels }, 'Negating existing quality labels')
-    await labelerServer.createLabels({ uri: did }, { negate: currentQualityLabels })
+    logger.info({ uri: recordUri, negating: currentQualityLabels }, 'Negating existing quality labels')
+    await labelerServer.createLabels({ uri: recordUri }, { negate: currentQualityLabels })
   }
 
   // 5. Create the new label
-  logger.info({ did, label: labelIdentifier }, 'Applying quality label')
-  await labelerServer.createLabel({ uri: did, val: labelIdentifier })
+  logger.info({ uri: recordUri, label: labelIdentifier }, 'Applying quality label')
+  await labelerServer.createLabel({ uri: recordUri, val: labelIdentifier })
 }

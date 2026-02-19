@@ -39,12 +39,14 @@ indexer.record(async (evt) => {
     return
   }
 
+  const recordUri = `at://${evt.did}/${ACTIVITY_COLLECTION}/${evt.rkey}`
+
   // Step 2: Log with final score (single atomic write)
   try {
     logActivity({
       did: evt.did,
       rkey: evt.rkey,
-      uri: `at://${evt.did}/${ACTIVITY_COLLECTION}/${evt.rkey}`,
+      uri: recordUri,
       title: record.title || 'Untitled',
       score: result.totalScore,
       tier: result.tier,
@@ -63,7 +65,7 @@ indexer.record(async (evt) => {
 
   // Step 3: Apply AT Proto label (can fail gracefully)
   try {
-    await applyQualityLabel(evt.did, result.tier)
+    await applyQualityLabel(recordUri, result.tier)
   } catch (err) {
     logger.error({ err, did: evt.did }, 'Error applying label (score still saved)')
   }
