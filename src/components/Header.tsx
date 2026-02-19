@@ -7,6 +7,7 @@ import { ThemeToggle } from '@/components/ThemeToggle'
 const navLinks = [
   { label: 'dashboard', href: '/' },
   { label: 'feed', href: '/feed' },
+  { label: 'docs', href: '/docs' },
 ]
 
 export function Header() {
