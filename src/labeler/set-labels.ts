@@ -3,6 +3,7 @@
 import { BSKY_IDENTIFIER, BSKY_PASSWORD } from '../lib/config'
 import { LABELS } from '../lib/constants'
 import { setLabelerLabelDefinitions } from '@skyware/labeler/scripts'
+import { resolvePds } from '../lib/resolve-pds'
 
 async function main() {
   const identifier = process.argv[2] || BSKY_IDENTIFIER
@@ -14,9 +15,9 @@ async function main() {
     process.exit(1)
   }
 
-  const res = await fetch(`https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle=${identifier}`)
-  const { did } = await res.json() as { did: string }
-  console.log(`Setting up labels for ${did} (${identifier})...`)
+  console.log(`Resolving account for ${identifier}...`)
+  const { did, pds } = await resolvePds(identifier)
+  console.log(`Setting up labels for ${did} (${identifier}) on PDS ${pds}...`)
 
   const labelDefinitions = LABELS.map(label => ({
     identifier: label.identifier,
@@ -28,7 +29,7 @@ async function main() {
   }))
 
   await setLabelerLabelDefinitions(
-    { identifier, password },
+    { identifier, password, pds },
     labelDefinitions,
   )
 
