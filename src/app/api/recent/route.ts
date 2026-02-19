@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { getRecentActivities, getActivitiesByTier, getTotalCount } from '@/lib/db'
 import type { LabelTier, ActivityLogEntry } from '@/lib/types'
 
-const VALID_TIERS: LabelTier[] = ['high-quality', 'standard', 'draft', 'likely-test']
+const VALID_TIERS: LabelTier[] = ['pending', 'high-quality', 'standard', 'draft', 'likely-test']
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)

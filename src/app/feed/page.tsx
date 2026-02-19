@@ -6,6 +6,7 @@ import type { LabelTier, ActivityLogEntry } from '@/lib/types'
 
 const filterOptions: { label: string; value: LabelTier | 'all' }[] = [
   { label: 'All', value: 'all' },
+  { label: '⟳ Pending', value: 'pending' },
   { label: '✦ High Quality', value: 'high-quality' },
   { label: '● Standard', value: 'standard' },
   { label: '◌ Draft', value: 'draft' },
@@ -72,7 +73,7 @@ export default function FeedPage() {
           Activity Feed
         </h1>
         <p className='text-sm text-muted-foreground mt-1'>
-          All scored hypercert activity records.
+          All detected hypercert activity records.
         </p>
       </div>
 

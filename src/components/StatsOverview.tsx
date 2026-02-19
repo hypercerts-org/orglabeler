@@ -7,7 +7,7 @@ interface StatsOverviewProps {
   stats: LabelStats
 }
 
-const QUALITY_TIERS: LabelTier[] = ['high-quality', 'standard', 'draft', 'likely-test']
+const QUALITY_TIERS: LabelTier[] = ['pending', 'high-quality', 'standard', 'draft', 'likely-test']
 
 export function StatsOverview({ stats }: StatsOverviewProps) {
   return (
