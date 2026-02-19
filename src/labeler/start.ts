@@ -1,82 +1,88 @@
 import 'dotenv/config'
-import fs from 'node:fs'
-import { HOST, LABELER_PORT, METRICS_PORT, CURSOR_UPDATE_INTERVAL, CURSOR_PATH } from '../lib/config'
+import { spawn, type ChildProcess } from 'node:child_process'
+import { HOST, LABELER_PORT, METRICS_PORT, TAP_URL, TAP_BIND, TAP_DB_PATH, ACTIVITY_COLLECTION } from '../lib/config'
 import { labelerServer } from './server'
-import { startJetstreamSubscription } from './jetstream'
+import { startTapConsumer } from './tap-consumer'
 import { startMetricsServer } from './metrics'
 import logger from './logger'
 
-const CURSOR_FILE = CURSOR_PATH
+function spawnTap(): ChildProcess {
+  const tapProcess = spawn('tap', ['run'], {
+    env: {
+      ...process.env,
+      TAP_SIGNAL_COLLECTION: ACTIVITY_COLLECTION,
+      TAP_COLLECTION_FILTERS: ACTIVITY_COLLECTION,
+      TAP_DATABASE_URL: `sqlite://${TAP_DB_PATH}`,
+      TAP_BIND: TAP_BIND,
+      TAP_LOG_LEVEL: 'info',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
 
-// 1. Read cursor from cursor.txt (or create at Date.now() * 1000)
-function readCursor(): number {
-  try {
-    const raw = fs.readFileSync(CURSOR_FILE, 'utf-8').trim()
-    const parsed = parseInt(raw, 10)
-    if (!isNaN(parsed)) return parsed
-  } catch {
-    // file doesn't exist or is invalid
-  }
-  return Date.now() * 1000
+  tapProcess.stdout?.on('data', (data: Buffer) => {
+    logger.info({ source: 'tap' }, data.toString().trim())
+  })
+  tapProcess.stderr?.on('data', (data: Buffer) => {
+    logger.error({ source: 'tap' }, data.toString().trim())
+  })
+  tapProcess.on('exit', (code) => {
+    logger.warn({ code }, 'Tap process exited')
+  })
+
+  return tapProcess
 }
 
-function writeCursor(cursor: number): void {
-  try {
-    fs.writeFileSync(CURSOR_FILE, String(cursor), 'utf-8')
-  } catch (err) {
-    logger.error({ err }, 'Failed to write cursor')
+async function waitForTap(url: string, maxAttempts = 30, intervalMs = 1000): Promise<void> {
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      const res = await fetch(`${url}/health`)
+      if (res.ok) {
+        logger.info('Tap is healthy')
+        return
+      }
+    } catch {
+      // tap not ready yet
+    }
+    await new Promise(r => setTimeout(r, intervalMs))
   }
+  throw new Error(`Tap did not become healthy after ${maxAttempts} attempts`)
 }
 
 async function main() {
-  const cursor = readCursor()
-  logger.info({ cursor }, 'Starting labeler process')
+  logger.info('Starting labeler process')
 
-  // 2. Start LabelerServer on LABELER_PORT + HOST
+  // 1. Start LabelerServer
   await new Promise<void>((resolve, reject) => {
     labelerServer.start({ port: LABELER_PORT, host: HOST }, (err, address) => {
-      if (err) {
-        reject(err)
-        return
-      }
+      if (err) { reject(err); return }
       logger.info({ address }, 'LabelerServer started')
       resolve()
     })
   })
 
-  // 3. Start metrics server on METRICS_PORT
+  // 2. Start metrics server
   startMetricsServer(METRICS_PORT)
   logger.info({ port: METRICS_PORT }, 'Metrics server started')
 
-  // 4. Start Jetstream subscription with cursor
-  const subscription = startJetstreamSubscription(cursor)
-  logger.info('Jetstream subscription started')
+  // 3. Spawn tap sidecar
+  const tapProcess = spawnTap()
+  logger.info('Tap process spawned, waiting for health...')
 
-  // 5. Set interval to persist cursor to cursor.txt every CURSOR_UPDATE_INTERVAL
-  const cursorInterval = setInterval(() => {
-    const current = subscription.getCursor()
-    if (current !== undefined) {
-      writeCursor(current)
-      logger.debug({ cursor: current }, 'Cursor persisted')
-    }
-  }, CURSOR_UPDATE_INTERVAL)
+  // 4. Wait for tap to be ready
+  await waitForTap(TAP_URL)
 
-  // 6. Handle SIGINT/SIGTERM: save cursor, close subscription, stop servers
+  // 5. Start tap consumer (replaces Jetstream subscription)
+  const consumer = startTapConsumer()
+  logger.info('Tap consumer started — receiving backfill + live events')
+
+  // 6. Shutdown handler
   async function shutdown(signal: string) {
     logger.info({ signal }, 'Shutting down...')
-    clearInterval(cursorInterval)
-
-    const current = subscription.getCursor()
-    if (current !== undefined) {
-      writeCursor(current)
-    }
-
-    subscription.dispose()
-
+    await consumer.destroy()
+    tapProcess.kill('SIGTERM')
     await new Promise<void>((resolve) => {
       labelerServer.close(() => resolve())
     })
-
     logger.info('Shutdown complete')
     process.exit(0)
   }
