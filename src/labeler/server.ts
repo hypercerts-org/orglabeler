@@ -25,6 +25,27 @@ export async function fetchCurrentLabels(uri: string): Promise<Set<string>> {
   return active
 }
 
+export async function negateAllDIDLabels(): Promise<number> {
+  await labelerServer.db.execute('SELECT 1') // ensure db is ready
+  const result = await labelerServer.db.execute({
+    sql: 'SELECT DISTINCT uri FROM labels WHERE uri LIKE \'did:%\'',
+    args: [],
+  })
+
+  let negatedCount = 0
+  for (const row of result.rows) {
+    const did = row['uri'] as string
+    const activeLabels = await fetchCurrentLabels(did)
+    const activeQualityLabels = [...activeLabels].filter(l => QUALITY_LABEL_IDENTIFIERS.includes(l))
+    if (activeQualityLabels.length > 0) {
+      logger.info({ did, negating: activeQualityLabels }, 'Negating stale DID-level quality labels')
+      await labelerServer.createLabels({ uri: did }, { negate: activeQualityLabels })
+      negatedCount++
+    }
+  }
+  return negatedCount
+}
+
 export async function applyQualityLabel(recordUri: string, labelIdentifier: string): Promise<void> {
   // 1. Fetch current labels for the record URI
   const currentLabels = await fetchCurrentLabels(recordUri)

@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { HOST, LABELER_PORT, METRICS_PORT, TAP_URL, TAP_BIND, TAP_DB_PATH, ACTIVITY_COLLECTION } from '../lib/config'
 import { getPendingActivities, deleteActivity } from '../lib/db'
-import { labelerServer } from './server'
+import { labelerServer, negateAllDIDLabels } from './server'
 import { startTapConsumer } from './tap-consumer'
 import { startMetricsServer } from './metrics'
 import logger from './logger'
@@ -80,6 +80,12 @@ async function main() {
   // 2. Start metrics server
   startMetricsServer(METRICS_PORT)
   logger.info({ port: METRICS_PORT }, 'Metrics server started')
+
+  // 2b. Negate any stale DID-level labels from previous deployments
+  const negatedCount = await negateAllDIDLabels()
+  if (negatedCount > 0) {
+    logger.info({ count: negatedCount }, 'Negated stale DID-level labels from previous deployment')
+  }
 
   // 3. Spawn tap sidecar
   const tapProcess = spawnTap()
