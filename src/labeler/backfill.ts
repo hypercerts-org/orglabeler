@@ -12,8 +12,17 @@ const QUERY = `
     orgHypercertsClaimActivity(first: $first, after: $after) {
       edges {
         node {
-          uri did rkey title shortDescription description
+          uri did rkey
+          title shortDescription description
           workScope startDate endDate rights createdAt
+          locations
+          image {
+            ... on OrgHypercertsDefsUri { uri }
+            ... on OrgHypercertsDefsSmallImage { image { mimeType ref size } }
+          }
+          contributors {
+            contributorIdentity contributionWeight contributionDetails
+          }
         }
         cursor
       }
@@ -27,14 +36,17 @@ interface PageNode {
   uri: string
   did: string
   rkey: string
-  title: string
-  shortDescription: string
+  title?: string | null
+  shortDescription?: string | null
   description?: string
   workScope?: string
   startDate?: string
   endDate?: string
   rights?: { uri: string; cid: string }
   createdAt: string
+  image?: { uri: string } | { image: { mimeType: string; ref: string; size: number } } | null
+  contributors?: Array<{ contributorIdentity: unknown; contributionWeight?: string; contributionDetails?: unknown }> | null
+  locations?: unknown[] | null
 }
 
 interface PageEdge {
@@ -53,24 +65,34 @@ interface PageResult {
   totalCount: number
 }
 
-async function fetchPage(after?: string): Promise<PageResult> {
+async function fetchPage(after?: string, pageSize: number = PAGE_SIZE): Promise<PageResult> {
+  const variables: Record<string, unknown> = { first: pageSize }
+  if (after) variables.after = after
+
+  const body = JSON.stringify({ query: QUERY, variables })
+
   const res = await fetch(HYPERINDEX_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      query: QUERY,
-      variables: { first: PAGE_SIZE, after },
-    }),
+    body,
   })
 
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status}: ${res.statusText}`)
+  const responseText = await res.text()
+
+  if (!res.ok && !responseText.includes('"data"')) {
+    throw new Error(`HTTP ${res.status}: ${res.statusText}\n${responseText}`)
   }
 
-  const json = await res.json() as { data?: { orgHypercertsClaimActivity: PageResult }; errors?: Array<{ message: string }> }
+  const json = JSON.parse(responseText) as { data?: { orgHypercertsClaimActivity: PageResult } | null; errors?: Array<{ message: string }> }
 
   if (json.errors && json.errors.length > 0) {
-    throw new Error(json.errors[0].message)
+    // Log errors as warnings but continue if we have partial data
+    for (const err of json.errors) {
+      console.warn(`  GraphQL warning: ${err.message}`)
+    }
+    if (!json.data?.orgHypercertsClaimActivity) {
+      throw new Error(json.errors[0].message)
+    }
   }
 
   if (!json.data) {
@@ -80,20 +102,97 @@ async function fetchPage(after?: string): Promise<PageResult> {
   return json.data.orgHypercertsClaimActivity
 }
 
+// Fetch a page, using binary search to skip bad records with null non-nullable fields.
+// When a page fails, we binary search for the largest first value that succeeds,
+// collect those records, then continue from the endCursor (the API skips bad records
+// when using cursor-based pagination).
+async function fetchPageWithRetry(after?: string, totalCount?: number): Promise<PageResult> {
+  try {
+    return await fetchPage(after, PAGE_SIZE)
+  } catch (err) {
+    console.warn(`  Page fetch failed (${(err as Error).message}), binary searching for bad record`)
+
+    const allEdges: PageEdge[] = []
+    let cursor: string | undefined = after
+    let lastTotalCount = totalCount ?? 0
+
+    // Keep collecting records until we have PAGE_SIZE or reach end of data
+    while (allEdges.length < PAGE_SIZE) {
+      // Binary search: find largest first value that succeeds from current cursor
+      let lo = 1
+      let hi = PAGE_SIZE - allEdges.length
+      let lastGood: PageResult | null = null
+
+      while (lo <= hi) {
+        const mid = Math.floor((lo + hi) / 2)
+        try {
+          const result = await fetchPage(cursor, mid)
+          lastGood = result
+          lastTotalCount = result.totalCount
+          lo = mid + 1
+        } catch {
+          hi = mid - 1
+        }
+      }
+
+      if (!lastGood || lastGood.edges.length === 0) {
+        console.warn(`  Could not fetch any records from cursor ${cursor ?? 'start'}, stopping`)
+        break
+      }
+
+      allEdges.push(...lastGood.edges)
+      cursor = lastGood.pageInfo.endCursor ?? undefined
+
+      if (!lastGood.pageInfo.hasNextPage || !cursor) {
+        return { edges: allEdges, pageInfo: lastGood.pageInfo, totalCount: lastTotalCount }
+      }
+
+      // The next record after endCursor may be bad — the API will skip it automatically
+      // when we use after=cursor. Try fetching the rest of the page.
+      try {
+        const rest = await fetchPage(cursor, PAGE_SIZE - allEdges.length)
+        allEdges.push(...rest.edges)
+        return { edges: allEdges, pageInfo: rest.pageInfo, totalCount: rest.totalCount }
+      } catch {
+        // Another bad record in the remaining records — loop again
+        continue
+      }
+    }
+
+    const lastEdge = allEdges[allEdges.length - 1]
+    return {
+      edges: allEdges,
+      pageInfo: {
+        hasNextPage: cursor !== undefined,
+        endCursor: lastEdge?.cursor ?? cursor ?? null,
+      },
+      totalCount: lastTotalCount,
+    }
+  }
+}
+
 function toActivityRecord(node: PageNode): ActivityRecord {
+  let image: ActivityRecord['image']
+  if (node.image) {
+    if ('uri' in node.image) {
+      image = { uri: node.image.uri }
+    } else if ('image' in node.image) {
+      image = { file: node.image.image }
+    }
+  }
+
   return {
-    title: node.title,
-    shortDescription: node.shortDescription,
+    title: node.title ?? '',
+    shortDescription: node.shortDescription ?? '',
     description: node.description,
     createdAt: node.createdAt,
     startDate: node.startDate,
     endDate: node.endDate,
     workScope: node.workScope,
     rights: node.rights,
-    // image, contributors, locations omitted from simplified query — scorer handles gracefully
-    image: undefined,
-    contributors: undefined,
-    locations: undefined,
+    image,
+    contributors: node.contributors as ActivityRecord['contributors'] ?? undefined,
+    locations: node.locations as ActivityRecord['locations'] ?? undefined,
   }
 }
 
@@ -116,7 +215,7 @@ async function main() {
   console.log()
 
   do {
-    const page = await fetchPage(cursor)
+    const page = await fetchPageWithRetry(cursor, totalCount)
     totalCount = page.totalCount
 
     if (processed === 0) {
@@ -175,6 +274,11 @@ async function main() {
     cursor = page.pageInfo.hasNextPage && page.pageInfo.endCursor
       ? page.pageInfo.endCursor
       : undefined
+
+    // Safety: stop if we've processed all known records
+    if (totalCount > 0 && processed >= totalCount) {
+      cursor = undefined
+    }
   } while (cursor)
 
   console.log(`\nBackfill complete:`)
