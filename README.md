@@ -25,9 +25,14 @@ git clone <repo>
 cd certified-labeler
 npm install
 
-# Initialize the labeler account (requires email confirmation)
+# Works with any AT Protocol PDS (not just bsky.social)
 npm run setup -- your-handle.bsky.social your-password https://labeler.yourdomain.com
+
+# Example with custom PDS:
+npm run setup -- satyam2.climateai.org yourpassword https://labeler.climateai.org
 ```
+
+The setup script automatically resolves your account's PDS endpoint from the DID document. It works with any AT Protocol PDS, not just bsky.social.
 
 The setup script will:
 1. Generate a signing key
@@ -65,6 +70,8 @@ npm run dev:labeler    # Labeler backend on port 4100 + metrics on 4101
                          └──────────────┘        └──────────────┘
 ```
 
+The labeler auto-detects the PDS for non-bsky.social accounts via DID document resolution, so it works seamlessly across any AT Protocol PDS.
+
 ## Scoring
 
 Scores `org.hypercerts.claim.activity` records on 9 criteria (100 points total):
@@ -93,10 +100,24 @@ Test detection: Regex patterns catch common test strings ("test", "asdf", "lorem
 | `npm run setup` | Initialize labeler account |
 | `npm run set-labels` | Push/update label definitions |
 | `npm run build` | Production build |
+| `npm run reset` | Clear databases and cursor (fresh start) |
 
 ## Environment Variables
 
-See `.env.example` for all variables.
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DID` | (set by setup) | Labeler account DID |
+| `SIGNING_KEY` | (set by setup) | secp256k1 private key hex |
+| `BSKY_IDENTIFIER` | (set by setup) | Account handle |
+| `BSKY_PASSWORD` | (set by setup) | Account password or app password |
+| `PDS_URL` | (auto-detected) | PDS endpoint URL |
+| `LABELER_ENDPOINT` | https://labeler.\<handle\> | Public HTTPS URL for the labeler |
+| `HOST` | 127.0.0.1 | Labeler server bind address |
+| `LABELER_PORT` | 4100 | Labeler server port |
+| `METRICS_PORT` | 4101 | Prometheus metrics port |
+| `FIREHOSE_URL` | wss://jetstream1.us-east.bsky.network/subscribe | Jetstream endpoint |
+| `CURSOR_UPDATE_INTERVAL` | 60000 | Cursor save interval (ms) |
+| `ACTIVITY_DB_PATH` | activity-log.db | Activity log database path |
 
 ## Production Deployment
 
