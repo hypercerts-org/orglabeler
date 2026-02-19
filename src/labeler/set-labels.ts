@@ -1,22 +1,22 @@
-// Run with: npx tsx src/labeler/set-labels.ts
+// Run with: npx tsx src/labeler/set-labels.ts [handle] [password]
 
-import { BSKY_IDENTIFIER, BSKY_PASSWORD, DID } from '../lib/config'
+import { BSKY_IDENTIFIER, BSKY_PASSWORD } from '../lib/config'
 import { LABELS } from '../lib/constants'
 import { setLabelerLabelDefinitions } from '@skyware/labeler/scripts'
 
 async function main() {
-  if (!BSKY_IDENTIFIER || !BSKY_PASSWORD) {
-    console.error('Error: BSKY_IDENTIFIER and BSKY_PASSWORD must be set in .env')
+  const identifier = process.argv[2] || BSKY_IDENTIFIER
+  const password = process.argv[3] || BSKY_PASSWORD
+
+  if (!identifier || !password) {
+    console.error('Error: BSKY_IDENTIFIER and BSKY_PASSWORD must be set in .env or passed as CLI args')
+    console.error('Usage: npx tsx src/labeler/set-labels.ts <handle> <password>')
     process.exit(1)
   }
 
-  if (!DID) {
-    console.error('Error: DID must be set in .env')
-    process.exit(1)
-  }
-
-  console.log(`Setting up labels for ${DID}...`)
-  console.log(`Using account: ${BSKY_IDENTIFIER}`)
+  const res = await fetch(`https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle=${identifier}`)
+  const { did } = await res.json() as { did: string }
+  console.log(`Setting up labels for ${did} (${identifier})...`)
 
   const labelDefinitions = LABELS.map(label => ({
     identifier: label.identifier,
@@ -28,7 +28,7 @@ async function main() {
   }))
 
   await setLabelerLabelDefinitions(
-    { identifier: BSKY_IDENTIFIER, password: BSKY_PASSWORD },
+    { identifier, password },
     labelDefinitions,
   )
 
