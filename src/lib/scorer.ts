@@ -95,8 +95,12 @@ export function scoreActivity(record: ActivityRecord): ScoreResult {
   // 4. hasImage (0-10)
   const image = record.image
   let hasImage = 0
-  if (image && (('uri' in image && image.uri) || ('file' in image && image.file))) {
-    hasImage = 10
+  if (image) {
+    if (typeof image === 'string' && image.length > 0) {
+      hasImage = 10
+    } else if (typeof image === 'object' && (('uri' in image && image.uri) || ('file' in image && image.file))) {
+      hasImage = 10
+    }
   }
 
   // 5. hasWorkScope (0-10)
@@ -114,8 +118,8 @@ export function scoreActivity(record: ActivityRecord): ScoreResult {
   const contributors = record.contributors ?? []
   let contributorQuality = 0
   if (contributors.length >= 1) {
-    const withWeight = contributors.filter(c => c.contributionWeight != null && c.contributionWeight !== '')
-    const withDetails = contributors.filter(c => c.contributionDetails != null && c.contributionDetails !== '')
+    const withWeight = contributors.filter(c => 'contributionWeight' in c && c.contributionWeight != null && c.contributionWeight !== '')
+    const withDetails = contributors.filter(c => 'contributionDetails' in c && c.contributionDetails != null && c.contributionDetails !== '')
     if (contributors.length >= 2 && withWeight.length >= 2 && withDetails.length >= 1) {
       contributorQuality = 15
     } else if (withWeight.length >= 1) {

@@ -4,9 +4,10 @@ export interface ActivityRecord {
   title: string
   shortDescription: string
   description?: string
-  image?: { $type?: string; uri?: string } | { $type?: string; file?: unknown }
+  image?: string | { $type?: string; uri?: string } | { $type?: string; file?: unknown }
   workScope?: { uri?: string; cid?: string } | string
-  contributors?: ActivityContributor[]
+  contributors?: (ActivityContributor | { uri: string; cid: string })[]
+  contributorsWeights?: number[]
   locations?: Array<{ uri: string; cid: string }>
   startDate?: string
   endDate?: string
