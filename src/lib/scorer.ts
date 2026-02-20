@@ -116,15 +116,33 @@ export function scoreActivity(record: ActivityRecord): ScoreResult {
 
   // 6. contributorQuality (0-15)
   const contributors = record.contributors ?? []
+  const contributorsWeights = record.contributorsWeights ?? []
   let contributorQuality = 0
+
   if (contributors.length >= 1) {
-    const withWeight = contributors.filter(c => 'contributionWeight' in c && c.contributionWeight != null && c.contributionWeight !== '')
-    const withDetails = contributors.filter(c => 'contributionDetails' in c && c.contributionDetails != null && c.contributionDetails !== '')
-    if (contributors.length >= 2 && withWeight.length >= 2 && withDetails.length >= 1) {
+    // Check for weights from either source:
+    // - Inline: contributor objects with contributionWeight field
+    // - Top-level: contributorsWeights number array
+    const inlineWeightCount = contributors.filter(c =>
+      'contributionWeight' in c && c.contributionWeight != null && c.contributionWeight !== ''
+    ).length
+    const topLevelWeightCount = contributorsWeights.filter(w => w != null).length
+    const hasWeights = Math.max(inlineWeightCount, topLevelWeightCount)
+
+    // Check for details (only available in inline shape)
+    const hasDetails = contributors.filter(c =>
+      'contributionDetails' in c && c.contributionDetails != null && c.contributionDetails !== ''
+    ).length
+
+    if (contributors.length >= 2 && hasWeights >= 2 && hasDetails >= 1) {
       contributorQuality = 15
-    } else if (withWeight.length >= 1) {
+    } else if (contributors.length >= 2 && hasWeights >= 2) {
+      // Reference-style contributors with weights but no inline details
+      contributorQuality = 12
+    } else if (hasWeights >= 1) {
       contributorQuality = 10
     } else {
+      // Contributors listed but no weights
       contributorQuality = 5
     }
   }
