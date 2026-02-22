@@ -56,13 +56,11 @@ export function scoreActivity(record: ActivityRecord): ScoreResult {
     testSignals.push('title identical to short description')
   }
 
-  // shortDescription identical to description (lazy copy-paste)
-  if (
+  // shortDescription identical to description (lazy copy-paste) — penalty, not test signal
+  const descDuplicatePenalty = (
     desc.trim().length > 0 &&
     shortDesc.trim().toLowerCase() === desc.trim().toLowerCase()
-  ) {
-    testSignals.push('short description identical to description')
-  }
+  ) ? -20 : 0
 
   // All characters in title are the same (e.g. "aaaa")
   if (title.length > 0 && new Set(title.split('')).size === 1) {
@@ -268,7 +266,7 @@ export function scoreActivity(record: ActivityRecord): ScoreResult {
     hasDateRange +
     hasRights
 
-  const totalScore = Math.max(0, rawScore + repetitionFlags)
+  const totalScore = Math.max(0, rawScore + repetitionFlags + descDuplicatePenalty)
 
   const tier = tierForScore(totalScore, testSignals)
 
