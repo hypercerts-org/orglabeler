@@ -132,5 +132,5 @@ async function classifyContent(text: string): Promise<ContentClassification | nu
 }
 
 export function isLowQualityContent(classification: ContentClassification): boolean {
-  return classification.label !== 'meaningful project description' && classification.score > 0.6
+  return classification.label !== 'meaningful project description' && classification.score > 0.4
 }

@@ -76,7 +76,7 @@ indexer.record(async (evt) => {
   }
 
   // Step 4: Fire-and-forget: enqueue HF classification (runs in background, updates DB when done)
-  const text = `${record.title ?? ''} ${record.shortDescription ?? ''} ${record.description ?? ''}`.trim()
+  const text = [record.title ?? '', record.shortDescription ?? '', record.description ?? ''].filter(Boolean).join(' ')
   enqueueClassification(text, evt.did, evt.rkey)
 })
 
