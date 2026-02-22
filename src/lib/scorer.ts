@@ -36,6 +36,7 @@ export function scoreActivity(record: ActivityRecord): ScoreResult {
   // --- Test signal detection (checked BEFORE scoring) ---
   const title = record.title ?? ''
   const shortDesc = record.shortDescription ?? ''
+  const desc = record.description ?? ''
 
   // title matches test pattern
   if (TEST_PATTERNS.some(p => p.test(title.trim()))) {
@@ -53,6 +54,14 @@ export function scoreActivity(record: ActivityRecord): ScoreResult {
     title.length < 50
   ) {
     testSignals.push('title identical to short description')
+  }
+
+  // shortDescription identical to description (lazy copy-paste)
+  if (
+    desc.trim().length > 0 &&
+    shortDesc.trim().toLowerCase() === desc.trim().toLowerCase()
+  ) {
+    testSignals.push('short description identical to description')
   }
 
   // All characters in title are the same (e.g. "aaaa")
@@ -107,7 +116,6 @@ export function scoreActivity(record: ActivityRecord): ScoreResult {
   }
 
   // 3. descriptionQuality (0-20)
-  const desc = record.description ?? ''
   let descriptionQuality = 0
   if (!desc || desc.length === 0) {
     descriptionQuality = 0
