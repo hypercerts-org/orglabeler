@@ -96,7 +96,7 @@ function getHfInstance(): HfInference {
 }
 
 async function classifyContent(text: string): Promise<ContentClassification | null> {
-  if (!config.HF_TOKEN) {
+  if (!config.HF_TOKEN || !text.trim()) {
     return null
   }
 
