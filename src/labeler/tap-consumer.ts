@@ -1,9 +1,9 @@
 import { Tap, SimpleIndexer } from '@atproto/tap'
 import type { TapChannel } from '@atproto/tap'
 import { TAP_URL, TAP_ADMIN_PASSWORD, ACTIVITY_COLLECTION } from '../lib/config'
-import { scoreActivity, tierForScore } from '../lib/scorer'
+import { scoreActivity } from '../lib/scorer'
 import { logActivity } from '../lib/db'
-import { classifyContent, isLowQualityContent } from '../lib/hf-classifier'
+import { enqueueClassification } from '../lib/hf-classifier'
 import { applyQualityLabel } from './server'
 import logger from './logger'
 import type { ActivityRecord } from '../lib/types'
@@ -46,29 +46,7 @@ indexer.record(async (evt) => {
 
   const recordUri = `at://${evt.did}/${ACTIVITY_COLLECTION}/${evt.rkey}`
 
-  // Step 2: Async HF classification (non-blocking — never crashes pipeline)
-  const text = `${record.title ?? ''} ${record.shortDescription ?? ''} ${record.description ?? ''}`.trim()
-  const classification = await classifyContent(text)
-  console.log('[hf]', recordUri, classification?.label, classification?.score)
-
-  let finalTier = result.tier
-  let finalTestSignals = result.testSignals
-  let hfLabel: string | null = null
-  let hfScore: number | null = null
-
-  if (classification !== null) {
-    hfLabel = classification.label
-    hfScore = classification.score
-    if (isLowQualityContent(classification)) {
-      finalTestSignals = [
-        ...result.testSignals,
-        `hf-flagged: ${classification.label} (${(classification.score * 100).toFixed(0)}%)`,
-      ]
-      finalTier = tierForScore(result.totalScore, finalTestSignals)
-    }
-  }
-
-  // Step 3: Log with final score (single atomic write)
+  // Step 2: Log immediately with scorer result (HF data will be backfilled by background queue)
   try {
     logActivity({
       did: evt.did,
@@ -76,26 +54,30 @@ indexer.record(async (evt) => {
       uri: recordUri,
       title: title || 'Untitled',
       score: result.totalScore,
-      tier: finalTier,
+      tier: result.tier,
       breakdown: JSON.stringify(result.breakdown),
-      testSignals: JSON.stringify(finalTestSignals),
+      testSignals: JSON.stringify(result.testSignals),
       labeledAt: new Date().toISOString(),
-    }, { hfLabel, hfScore })
+    })
     logger.info(
-      { did: evt.did, rkey: evt.rkey, score: result.totalScore, tier: finalTier, source },
-      `Scored: ${result.totalScore}/100 → ${finalTier}`
+      { did: evt.did, rkey: evt.rkey, score: result.totalScore, tier: result.tier, source },
+      `Scored: ${result.totalScore}/100 → ${result.tier}`
     )
   } catch (err) {
     logger.error({ err, did: evt.did, rkey: evt.rkey }, 'Error logging activity')
     return
   }
 
-  // Step 4: Apply AT Proto label (can fail gracefully)
+  // Step 3: Apply AT Proto label immediately (no waiting for HF)
   try {
-    await applyQualityLabel(recordUri, finalTier)
+    await applyQualityLabel(recordUri, result.tier)
   } catch (err) {
     logger.error({ err, uri: recordUri, did: evt.did }, 'Error applying label (score still saved)')
   }
+
+  // Step 4: Fire-and-forget: enqueue HF classification (runs in background, updates DB when done)
+  const text = `${record.title ?? ''} ${record.shortDescription ?? ''} ${record.description ?? ''}`.trim()
+  enqueueClassification(text, evt.did, evt.rkey)
 })
 
 indexer.error((err) => {

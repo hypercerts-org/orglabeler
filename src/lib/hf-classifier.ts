@@ -1,5 +1,8 @@
 import { HfInference } from '@huggingface/inference'
 import * as config from './config'
+import { updateActivityHfFields, getActivityByDidRkey } from './db'
+import { tierForScore } from './scorer'
+import { updateActivity } from './db'
 
 export interface ContentClassification {
   label: string
@@ -14,6 +17,75 @@ const CANDIDATE_LABELS = [
   'spam or gibberish',
 ]
 
+const DELAY_MS = 2000 // 2s between calls to avoid rate limits
+
+interface QueueItem {
+  text: string
+  did: string
+  rkey: string
+}
+
+const queue: QueueItem[] = []
+let processing = false
+
+export function enqueueClassification(text: string, did: string, rkey: string): void {
+  queue.push({ text, did, rkey })
+  if (!processing) processQueue()
+}
+
+export function getQueueLength(): number {
+  return queue.length
+}
+
+async function processQueue(): Promise<void> {
+  processing = true
+  while (queue.length > 0) {
+    const item = queue.shift()!
+    try {
+      const classification = await classifyContent(item.text)
+      if (classification) {
+        updateActivityHfFields(item.did, item.rkey, classification.label, classification.score)
+        console.log('[hf]', `${item.did}/${item.rkey}`, classification.label, classification.score)
+
+        if (isLowQualityContent(classification)) {
+          reclassifyWithHfSignal(item.did, item.rkey, classification)
+        }
+      }
+    } catch (err) {
+      console.warn('[hf-classifier] queue item failed:', err instanceof Error ? err.message : err)
+    }
+    // Wait between calls to avoid rate limiting
+    if (queue.length > 0) {
+      await new Promise(resolve => setTimeout(resolve, DELAY_MS))
+    }
+  }
+  processing = false
+}
+
+function reclassifyWithHfSignal(did: string, rkey: string, classification: ContentClassification): void {
+  const row = getActivityByDidRkey(did, rkey)
+  if (!row) return
+
+  let existingSignals: string[] = []
+  try {
+    existingSignals = JSON.parse(row.testSignals) as string[]
+  } catch {
+    existingSignals = []
+  }
+
+  const label = classification.label
+  const scorePct = (classification.score * 100).toFixed(0)
+  const updatedSignals = [...existingSignals, `hf-flagged: ${label} (${scorePct}%)`]
+  const newTier = tierForScore(row.score, updatedSignals)
+
+  updateActivity(did, rkey, {
+    score: row.score,
+    tier: newTier,
+    breakdown: row.breakdown,
+    testSignals: JSON.stringify(updatedSignals),
+  })
+}
+
 let hf: HfInference | null = null
 
 function getHfInstance(): HfInference {
@@ -23,13 +95,13 @@ function getHfInstance(): HfInference {
   return hf
 }
 
-export async function classifyContent(text: string): Promise<ContentClassification | null> {
+async function classifyContent(text: string): Promise<ContentClassification | null> {
   if (!config.HF_TOKEN) {
     return null
   }
 
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 10_000)
+  const timeout = setTimeout(() => controller.abort(), 30_000)
 
   try {
     const results = await getHfInstance().zeroShotClassification({

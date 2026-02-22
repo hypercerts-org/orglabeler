@@ -218,6 +218,22 @@ export function deleteActivity(did: string, rkey: string): void {
   db.prepare('DELETE FROM activities WHERE did = ? AND rkey = ?').run(did, rkey)
 }
 
+// Update only the HF classification fields on an existing activity row.
+export function updateActivityHfFields(did: string, rkey: string, hfLabel: string, hfScore: number): void {
+  const db = getDb()
+  db.prepare('UPDATE activities SET hf_label = ?, hf_score = ? WHERE did = ? AND rkey = ?')
+    .run(hfLabel, hfScore, did, rkey)
+}
+
+// Fetch a single activity by did + rkey. Returns null if not found.
+export function getActivityByDidRkey(did: string, rkey: string): ActivityLogEntry | null {
+  const db = getDb()
+  const row = db.prepare(
+    'SELECT id, did, rkey, uri, title, score, tier, breakdown, test_signals, labeled_at, hf_label, hf_score FROM activities WHERE did = ? AND rkey = ?'
+  ).get(did, rkey) as Record<string, unknown> | undefined
+  return row ? rowToEntry(row) : null
+}
+
 function rowToEntry(row: Record<string, unknown>): ActivityLogEntry {
   return {
     id: row['id'] as number,
