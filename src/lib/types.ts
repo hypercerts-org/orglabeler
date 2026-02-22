@@ -5,7 +5,7 @@ export interface ActivityRecord {
   shortDescription: string
   description?: string
   image?: string | { $type?: string; uri?: string } | { $type?: string; file?: unknown }
-  workScope?: { uri?: string; cid?: string } | string
+  workScope?: { uri?: string; cid?: string } | { labels?: string[]; expression?: string } | string
   contributors?: (ActivityContributor | { uri: string; cid: string })[]
   contributorsWeights?: number[]
   locations?: Array<{ uri: string; cid: string }>

@@ -109,8 +109,15 @@ export function scoreActivity(record: ActivityRecord): ScoreResult {
   if (workScope) {
     if (typeof workScope === 'string' && workScope.length > 0) {
       hasWorkScope = 10
-    } else if (typeof workScope === 'object' && (workScope.uri || workScope.cid)) {
-      hasWorkScope = 10
+    } else if (typeof workScope === 'object') {
+      if (
+        ('uri' in workScope && workScope.uri) ||
+        ('cid' in workScope && workScope.cid) ||
+        ('labels' in workScope && Array.isArray(workScope.labels) && workScope.labels.length > 0) ||
+        ('expression' in workScope && typeof workScope.expression === 'string' && workScope.expression.length > 0)
+      ) {
+        hasWorkScope = 10
+      }
     }
   }
 
