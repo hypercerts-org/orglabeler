@@ -61,8 +61,9 @@ export default function DocsPage() {
             {[
               { step: 'Record Created', sub: 'on AT Protocol' },
               { step: 'Detected', sub: 'via Tap' },
-              { step: 'Scored', sub: '9 criteria' },
+              { step: 'Scored', sub: '9 criteria + penalties' },
               { step: 'Labeled', sub: 'signed label applied' },
+              { step: 'ML Classified', sub: 'HuggingFace async' },
             ].map(({ step, sub }, i, arr) => (
               <div key={step} className='flex items-center gap-2'>
                 <div className='flex flex-col items-center gap-0.5'>
@@ -161,6 +162,36 @@ export default function DocsPage() {
             </tbody>
           </table>
         </div>
+
+        <h3 className='font-[family-name:var(--font-syne)] text-sm font-bold mt-4'>
+          Penalties
+        </h3>
+        <p className='text-sm text-muted-foreground'>
+          Points are deducted when low-quality patterns are detected.
+        </p>
+        <div className='border border-border rounded-lg bg-card overflow-hidden'>
+          <table className='w-full text-sm'>
+            <thead>
+              <tr className='border-b border-border'>
+                <th className='text-left px-4 py-2.5 text-xs font-medium text-muted-foreground font-[family-name:var(--font-syne)]'>Penalty</th>
+                <th className='text-left px-4 py-2.5 text-xs font-medium text-muted-foreground font-[family-name:var(--font-syne)]'>Trigger</th>
+                <th className='text-right px-4 py-2.5 text-xs font-medium text-muted-foreground font-[family-name:var(--font-syne)]'>Deduction</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className='border-b border-border'>
+                <td className='px-4 py-2.5 font-medium text-xs whitespace-nowrap'>Repetition</td>
+                <td className='px-4 py-2.5 text-xs text-muted-foreground'>High line or word repetition in description/summary (e.g. song lyrics, copypasta)</td>
+                <td className='px-4 py-2.5 text-right'><span className='font-mono text-xs font-medium text-rose-500'>−5 to −15</span></td>
+              </tr>
+              <tr className='border-b border-border'>
+                <td className='px-4 py-2.5 font-medium text-xs whitespace-nowrap'>Duplicate fields</td>
+                <td className='px-4 py-2.5 text-xs text-muted-foreground'>Summary identical to description (lazy copy-paste)</td>
+                <td className='px-4 py-2.5 text-right'><span className='font-mono text-xs font-medium text-rose-500'>−20</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </section>
 
       {/* Quality tiers */}
@@ -214,6 +245,24 @@ export default function DocsPage() {
             <span className='font-mono bg-secondary rounded px-1'>untitled</span>,{' '}
             <span className='font-mono bg-secondary rounded px-1'>aaaa…</span>, or when the title is
             identical to the summary and fewer than 50 characters.
+          </p>
+        </div>
+        <div className='border border-border rounded-lg bg-card p-4 text-xs text-muted-foreground space-y-1'>
+          <p className='font-medium text-foreground text-xs'>🤖 ML classification</p>
+          <p>
+            After scoring, each record is asynchronously classified by a HuggingFace zero-shot model
+            (<span className='font-mono bg-secondary rounded px-1'>facebook/bart-large-mnli</span>).
+            The model classifies the combined title, summary, and description text into one of four categories:
+          </p>
+          <ul className='mt-1 space-y-0.5 pl-3'>
+            <li>• <span className='font-mono bg-secondary rounded px-1'>meaningful project description</span> — legitimate content</li>
+            <li>• <span className='font-mono bg-secondary rounded px-1'>test or placeholder data</span> — test/junk content</li>
+            <li>• <span className='font-mono bg-secondary rounded px-1'>song lyrics or copypasta</span> — copied or irrelevant text</li>
+            <li>• <span className='font-mono bg-secondary rounded px-1'>spam or gibberish</span> — nonsensical content</li>
+          </ul>
+          <p className='mt-1'>
+            If the model classifies content as non-meaningful with {'>'} 40% confidence, the record is
+            automatically downgraded to <ScoreBadge tier='likely-test' />.
           </p>
         </div>
       </section>
