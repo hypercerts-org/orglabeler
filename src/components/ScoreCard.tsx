@@ -102,6 +102,25 @@ export function ScoreCard({ entry, defaultExpanded = false }: ScoreCardProps) {
         <ScoreBadge tier={entry.tier} score={entry.tier === 'pending' ? undefined : entry.score} />
       </div>
 
+      {/* HF classification badge */}
+      {entry.hfLabel != null && (
+        <div className='px-3 pb-2'>
+          <span
+            className='inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full'
+            style={{
+              backgroundColor: entry.hfLabel === 'meaningful project description'
+                ? 'oklch(0.8 0.15 145 / 0.2)'
+                : 'oklch(0.8 0.15 80 / 0.2)',
+              color: entry.hfLabel === 'meaningful project description'
+                ? 'oklch(0.55 0.15 145)'
+                : 'oklch(0.55 0.15 80)',
+            }}
+          >
+            🤖 HF: {entry.hfLabel} ({entry.hfScore != null ? `${Math.round(entry.hfScore * 100)}%` : '—'})
+          </span>
+        </div>
+      )}
+
       {/* Expandable breakdown */}
       <div
         className='grid transition-[grid-template-rows] duration-200'

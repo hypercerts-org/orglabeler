@@ -134,7 +134,7 @@ export function getRecentActivities(limit = 20, offset = 0): ActivityLogEntry[] 
   const safeLimit = Math.max(1, Math.min(limit || 20, 100))
   const safeOffset = Math.max(0, offset || 0)
   const rows = db.prepare(`
-    SELECT id, did, rkey, uri, title, score, tier, breakdown, test_signals, labeled_at
+    SELECT id, did, rkey, uri, title, score, tier, breakdown, test_signals, labeled_at, hf_label, hf_score
     FROM activities
     ORDER BY labeled_at DESC
     LIMIT ? OFFSET ?
@@ -150,7 +150,7 @@ export function getActivitiesByTier(tier: LabelTier, limit = 20, offset = 0): Ac
   const safeLimit = Math.max(1, Math.min(limit || 20, 100))
   const safeOffset = Math.max(0, offset || 0)
   const rows = db.prepare(`
-    SELECT id, did, rkey, uri, title, score, tier, breakdown, test_signals, labeled_at
+    SELECT id, did, rkey, uri, title, score, tier, breakdown, test_signals, labeled_at, hf_label, hf_score
     FROM activities
     WHERE tier = ?
     ORDER BY labeled_at DESC
@@ -207,7 +207,7 @@ export function getStats(): LabelStats {
 export function getPendingActivities(): ActivityLogEntry[] {
   const db = getDb()
   const rows = db.prepare(
-    'SELECT id, did, rkey, uri, title, score, tier, breakdown, test_signals, labeled_at FROM activities WHERE tier = ?'
+    'SELECT id, did, rkey, uri, title, score, tier, breakdown, test_signals, labeled_at, hf_label, hf_score FROM activities WHERE tier = ?'
   ).all('pending') as Array<Record<string, unknown>>
   return rows.map(rowToEntry)
 }
@@ -230,5 +230,7 @@ function rowToEntry(row: Record<string, unknown>): ActivityLogEntry {
     breakdown: row['breakdown'] as string,
     testSignals: row['test_signals'] as string,
     labeledAt: row['labeled_at'] as string,
+    hfLabel: (row['hf_label'] as string | null) ?? null,
+    hfScore: (row['hf_score'] as number | null) ?? null,
   }
 }

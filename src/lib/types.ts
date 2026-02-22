@@ -63,6 +63,8 @@ export interface ActivityLogEntry {
   breakdown: string       // JSON-serialized ScoreBreakdown
   testSignals: string     // JSON-serialized string[]
   labeledAt: string       // ISO timestamp
+  hfLabel?: string | null // HuggingFace classification label (nullable)
+  hfScore?: number | null // HuggingFace classification confidence (nullable)
 }
 
 // Stats
