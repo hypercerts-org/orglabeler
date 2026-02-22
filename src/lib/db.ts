@@ -2,6 +2,11 @@ import Database from 'better-sqlite3'
 import { ACTIVITY_DB_PATH } from './config'
 import type { ActivityLogEntry, LabelStats, LabelTier } from './types'
 
+export interface HfClassificationData {
+  hfLabel: string | null
+  hfScore: number | null
+}
+
 let _db: Database.Database | null = null
 
 function createActivitiesTable(db: Database.Database): void {
@@ -17,6 +22,8 @@ function createActivitiesTable(db: Database.Database): void {
       breakdown TEXT NOT NULL,
       test_signals TEXT NOT NULL DEFAULT '[]',
       labeled_at TEXT NOT NULL DEFAULT (datetime('now')),
+      hf_label TEXT,
+      hf_score REAL,
       UNIQUE(did, rkey)
     );
 
@@ -59,6 +66,15 @@ export function getDb(): Database.Database {
     }
   }
 
+  // Migration: add hf_label and hf_score columns if they don't exist yet
+  const cols = (_db.prepare("PRAGMA table_info(activities)").all() as Array<{ name: string }>).map(c => c.name)
+  if (!cols.includes('hf_label')) {
+    _db.exec('ALTER TABLE activities ADD COLUMN hf_label TEXT')
+  }
+  if (!cols.includes('hf_score')) {
+    _db.exec('ALTER TABLE activities ADD COLUMN hf_score REAL')
+  }
+
   return _db
 }
 
@@ -71,13 +87,13 @@ export function closeDb(): void {
 }
 
 // Insert or replace (upsert on did+rkey). Does not throw on duplicates.
-export function logActivity(entry: Omit<ActivityLogEntry, 'id'>): void {
+export function logActivity(entry: Omit<ActivityLogEntry, 'id'>, hf?: HfClassificationData): void {
   const db = getDb()
   const stmt = db.prepare(`
     INSERT OR REPLACE INTO activities
-      (did, rkey, uri, title, score, tier, breakdown, test_signals, labeled_at)
+      (did, rkey, uri, title, score, tier, breakdown, test_signals, labeled_at, hf_label, hf_score)
     VALUES
-      (@did, @rkey, @uri, @title, @score, @tier, @breakdown, @testSignals, @labeledAt)
+      (@did, @rkey, @uri, @title, @score, @tier, @breakdown, @testSignals, @labeledAt, @hfLabel, @hfScore)
   `)
   stmt.run({
     did: entry.did,
@@ -89,6 +105,8 @@ export function logActivity(entry: Omit<ActivityLogEntry, 'id'>): void {
     breakdown: entry.breakdown,
     testSignals: entry.testSignals,
     labeledAt: entry.labeledAt,
+    hfLabel: hf?.hfLabel ?? null,
+    hfScore: hf?.hfScore ?? null,
   })
 }
 
