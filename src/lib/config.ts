@@ -16,6 +16,8 @@ export const TAP_URL = process.env.TAP_URL ?? 'http://localhost:2480'
 export const TAP_ADMIN_PASSWORD = process.env.TAP_ADMIN_PASSWORD ?? ''
 export const TAP_BIND = process.env.TAP_BIND ?? ':2480'
 export const TAP_DB_PATH = process.env.TAP_DB_PATH ?? 'tap.db'
+export const HF_TOKEN = process.env.HF_TOKEN ?? ''
+export const HF_MODEL = 'facebook/bart-large-mnli'
 
 export function validateLabelerConfig(): void {
   const required: [string, string][] = [

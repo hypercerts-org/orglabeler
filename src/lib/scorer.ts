@@ -1,6 +1,35 @@
 import type { ActivityRecord, ScoreResult, ScoreBreakdown, LabelTier } from './types'
 import { TEST_PATTERNS, SCORE_THRESHOLDS } from './constants'
 
+interface RepetitionResult {
+  lineRepeatRatio: number
+  wordRepeatRatio: number
+  maxLineRepeats: number
+}
+
+export function detectRepetition(text: string): RepetitionResult {
+  const lines = text.split('\n').filter(l => l.trim().length > 0)
+  const words = text.split(/\s+/).filter(w => w.length > 0)
+
+  // lineRepeatRatio: unique lines / total lines
+  const uniqueLines = new Set(lines.map(l => l.trim()))
+  const lineRepeatRatio = lines.length > 0 ? uniqueLines.size / lines.length : 1
+
+  // wordRepeatRatio: unique words / total words (case-insensitive)
+  const uniqueWords = new Set(words.map(w => w.toLowerCase()))
+  const wordRepeatRatio = words.length > 0 ? uniqueWords.size / words.length : 1
+
+  // maxLineRepeats: highest count of any single non-empty line
+  const lineCounts = new Map<string, number>()
+  for (const line of lines) {
+    const key = line.trim()
+    lineCounts.set(key, (lineCounts.get(key) ?? 0) + 1)
+  }
+  const maxLineRepeats = lineCounts.size > 0 ? Math.max(...lineCounts.values()) : 0
+
+  return { lineRepeatRatio, wordRepeatRatio, maxLineRepeats }
+}
+
 export function scoreActivity(record: ActivityRecord): ScoreResult {
   const testSignals: string[] = []
 
@@ -171,6 +200,42 @@ export function scoreActivity(record: ActivityRecord): ScoreResult {
   // 9. hasRights (0-5)
   const hasRights = record.rights ? 5 : 0
 
+  // 10. Repetition detection
+  const descRep = detectRepetition(desc)
+  const descLines = desc.split('\n').filter(l => l.trim().length > 0)
+  const descWords = desc.split(/\s+/).filter(w => w.length > 0)
+
+  if (descRep.lineRepeatRatio < 0.4 && descLines.length > 8) {
+    testSignals.push(`description has high line repetition (${descRep.lineRepeatRatio.toFixed(2)})`)
+  }
+  if (descRep.wordRepeatRatio < 0.25 && descWords.length > 30) {
+    testSignals.push(`description has high word repetition (${descRep.wordRepeatRatio.toFixed(2)})`)
+  }
+  if (descRep.maxLineRepeats >= 4) {
+    testSignals.push(`description line repeated ${descRep.maxLineRepeats} times`)
+  }
+
+  const shortDescText = record.shortDescription ?? ''
+  const shortRep = detectRepetition(shortDescText)
+  const shortDescLines = shortDescText.split('\n').filter(l => l.trim().length > 0)
+  const shortDescWordList = shortDescText.split(/\s+/).filter(w => w.length > 0)
+
+  if (shortRep.lineRepeatRatio < 0.3 && shortDescLines.length > 8) {
+    testSignals.push(`short description has high line repetition (${shortRep.lineRepeatRatio.toFixed(2)})`)
+  }
+  if (shortRep.wordRepeatRatio < 0.2 && shortDescWordList.length > 30) {
+    testSignals.push(`short description has high word repetition (${shortRep.wordRepeatRatio.toFixed(2)})`)
+  }
+  if (shortRep.maxLineRepeats >= 3) {
+    testSignals.push(`short description line repeated ${shortRep.maxLineRepeats} times`)
+  }
+
+  // Count repetition signals added above (signals containing 'repetition' or 'repeated')
+  const repetitionSignalCount = testSignals.filter(s =>
+    s.includes('repetition') || s.includes('repeated')
+  ).length
+  const repetitionFlags = Math.max(-15, repetitionSignalCount * -5)
+
   const breakdown: ScoreBreakdown = {
     titleQuality,
     shortDescQuality,
@@ -181,9 +246,10 @@ export function scoreActivity(record: ActivityRecord): ScoreResult {
     hasLocations,
     hasDateRange,
     hasRights,
+    repetitionFlags,
   }
 
-  const totalScore =
+  const rawScore =
     titleQuality +
     shortDescQuality +
     descriptionQuality +
@@ -193,6 +259,8 @@ export function scoreActivity(record: ActivityRecord): ScoreResult {
     hasLocations +
     hasDateRange +
     hasRights
+
+  const totalScore = Math.max(0, rawScore + repetitionFlags)
 
   const tier = tierForScore(totalScore, testSignals)
 

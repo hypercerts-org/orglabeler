@@ -43,6 +43,7 @@ export interface ScoreBreakdown {
   hasLocations: number       // 0-5
   hasDateRange: number       // 0-5
   hasRights: number          // 0-5
+  repetitionFlags: number    // 0 = clean, negative penalty (-5 per signal, min -15)
 }
 
 export interface LabelDefinition {
