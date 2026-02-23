@@ -2,7 +2,7 @@ import { Tap, SimpleIndexer } from '@atproto/tap'
 import type { TapChannel } from '@atproto/tap'
 import { TAP_URL, TAP_ADMIN_PASSWORD, ACTIVITY_COLLECTION } from '../lib/config'
 import { scoreActivity } from '../lib/scorer'
-import { logActivity } from '../lib/db'
+import { logActivity, getUnclassifiedActivities } from '../lib/db'
 import { enqueueClassification } from '../lib/hf-classifier'
 import { applyQualityLabel } from './server'
 import logger from './logger'
@@ -83,6 +83,24 @@ indexer.record(async (evt) => {
 indexer.error((err) => {
   logger.error({ err }, 'SimpleIndexer error')
 })
+
+// Backfill HF classification for any activities that were ingested before HF was available
+// or that failed classification previously. Uses only the stored title as text input —
+// TODO: store the full concatenated text (title + shortDescription + description) in a
+// dedicated column so backfill can use the same text as the original ingestion path.
+export function backfillHfClassification(): void {
+  const unclassified = getUnclassifiedActivities()
+  if (unclassified.length === 0) {
+    logger.info('All activities have HF classification')
+    return
+  }
+  logger.info({ count: unclassified.length }, 'Backfilling HF classification for unclassified activities')
+  for (const { did, rkey, title } of unclassified) {
+    // We only have title from the DB query — enqueue with title as text
+    // (description isn't stored separately, but title is better than nothing)
+    enqueueClassification(title, did, rkey)
+  }
+}
 
 export function startTapConsumer(): { channel: TapChannel; destroy: () => Promise<void> } {
   const channel = tap.channel(indexer)

@@ -39,26 +39,34 @@ export function getQueueLength(): number {
 
 async function processQueue(): Promise<void> {
   processing = true
+  let processed = 0
+  let skipped = 0
+  let failed = 0
   while (queue.length > 0) {
     const item = queue.shift()!
     try {
-      const classification = await classifyContent(item.text)
+      const classification = await classifyContent(item.text, item.did, item.rkey)
       if (classification) {
         updateActivityHfFields(item.did, item.rkey, classification.label, classification.score)
         console.log('[hf]', `${item.did}/${item.rkey}`, classification.label, classification.score)
+        processed++
 
         if (isLowQualityContent(classification)) {
           reclassifyWithHfSignal(item.did, item.rkey, classification)
         }
+      } else {
+        skipped++
       }
     } catch (err) {
       console.warn('[hf-classifier] queue item failed:', err instanceof Error ? err.message : err)
+      failed++
     }
     // Wait between calls to avoid rate limiting
     if (queue.length > 0) {
       await new Promise(resolve => setTimeout(resolve, DELAY_MS))
     }
   }
+  console.log('[hf] queue complete:', processed, 'classified,', skipped, 'skipped,', failed, 'failed')
   processing = false
 }
 
@@ -87,6 +95,7 @@ function reclassifyWithHfSignal(did: string, rkey: string, classification: Conte
 }
 
 let hf: HfInference | null = null
+let _noTokenLogged = false
 
 function getHfInstance(): HfInference {
   if (!hf) {
@@ -95,8 +104,16 @@ function getHfInstance(): HfInference {
   return hf
 }
 
-async function classifyContent(text: string): Promise<ContentClassification | null> {
-  if (!config.HF_TOKEN || !text.trim()) {
+async function classifyContent(text: string, did?: string, rkey?: string): Promise<ContentClassification | null> {
+  if (!config.HF_TOKEN) {
+    if (!_noTokenLogged) {
+      console.log('[hf] HF_TOKEN not set — classification disabled')
+      _noTokenLogged = true
+    }
+    return null
+  }
+  if (!text.trim()) {
+    console.log('[hf] skip empty text:', did, rkey)
     return null
   }
 

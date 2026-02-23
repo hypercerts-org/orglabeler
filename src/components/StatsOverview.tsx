@@ -44,6 +44,35 @@ export function StatsOverview({ stats }: StatsOverviewProps) {
         </div>
         <p className='text-[10px] uppercase tracking-wide text-muted-foreground mt-1'>by quality tier</p>
       </div>
+
+      {/* HF Classification Coverage */}
+      {stats.hfCoverage !== undefined && (
+        <div className='border border-border rounded-lg bg-card p-4 min-w-[200px] flex-shrink-0'>
+          <div className='flex items-baseline gap-2'>
+            <p className='text-2xl font-bold text-foreground'>
+              {stats.hfCoverage.classified}
+            </p>
+            <p className='text-sm text-muted-foreground'>
+              / {stats.hfCoverage.total}
+            </p>
+          </div>
+          {/* Progress bar */}
+          <div className='mt-2 h-1.5 rounded-full bg-secondary overflow-hidden'>
+            <div
+              className='h-full rounded-full transition-all duration-500'
+              style={{
+                width: `${stats.hfCoverage.total > 0 ? (stats.hfCoverage.classified / stats.hfCoverage.total * 100) : 0}%`,
+                backgroundColor: stats.hfCoverage.classified === stats.hfCoverage.total
+                  ? 'oklch(0.8 0.15 145)'   // green when complete
+                  : 'oklch(0.75 0.15 260)', // brand purple when in-progress
+              }}
+            />
+          </div>
+          <p className='text-[10px] uppercase tracking-wide text-muted-foreground mt-1'>
+            🤖 hf classified
+          </p>
+        </div>
+      )}
     </div>
   )
 }

@@ -242,6 +242,14 @@ export function updateActivityHfFields(did: string, rkey: string, hfLabel: strin
     .run(hfLabel, hfScore, did, rkey)
 }
 
+// Get all activities that have not yet been classified by HF (hf_label IS NULL).
+export function getUnclassifiedActivities(): Array<{ did: string; rkey: string; title: string }> {
+  const db = getDb()
+  return db.prepare(
+    'SELECT did, rkey, title FROM activities WHERE hf_label IS NULL ORDER BY id ASC'
+  ).all() as Array<{ did: string; rkey: string; title: string }>
+}
+
 // Fetch a single activity by did + rkey. Returns null if not found.
 export function getActivityByDidRkey(did: string, rkey: string): ActivityLogEntry | null {
   const db = getDb()
