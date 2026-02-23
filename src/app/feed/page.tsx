@@ -17,6 +17,7 @@ const LIMIT = 20
 
 export default function FeedPage() {
   const [selectedTier, setSelectedTier] = useState<LabelTier | 'all'>('all')
+  const [aiOnly, setAiOnly] = useState(false)
   const [activities, setActivities] = useState<ActivityLogEntry[]>([])
   const [total, setTotal] = useState(0)
   const [offset, setOffset] = useState(0)
@@ -32,8 +33,9 @@ export default function FeedPage() {
 
       try {
         const tierParam = selectedTier === 'all' ? '' : `&tier=${selectedTier}`
+        const hfParam = aiOnly ? '&hf=true' : ''
         const res = await fetch(
-          `/api/recent?limit=${LIMIT}&offset=${currentOffset}${tierParam}`
+          `/api/recent?limit=${LIMIT}&offset=${currentOffset}${tierParam}${hfParam}`
         )
         if (!res.ok) throw new Error('API error')
         const data = await res.json()
@@ -55,14 +57,15 @@ export default function FeedPage() {
         setLoadingMore(false)
       }
     },
-    [selectedTier]  // only depend on tier
+    [selectedTier, aiOnly]  // depend on tier and AI filter
   )
 
   // Fix #3: stable poller — only update if newest item changed, DON'T reset offset
   const pollFirst = useCallback(async () => {
     try {
       const tierParam = selectedTier === 'all' ? '' : `&tier=${selectedTier}`
-      const res = await fetch(`/api/recent?limit=${LIMIT}&offset=0${tierParam}`)
+      const hfParam = aiOnly ? '&hf=true' : ''
+      const res = await fetch(`/api/recent?limit=${LIMIT}&offset=0${tierParam}${hfParam}`)
       if (!res.ok) throw new Error('API error')
       const data = await res.json()
       setActivities(prev => {
@@ -75,7 +78,7 @@ export default function FeedPage() {
     } catch (error) {
       console.error('Failed to poll activities:', error)
     }
-  }, [selectedTier])
+  }, [selectedTier, aiOnly])
 
   // Reset and re-fetch when tier changes
   useEffect(() => {
@@ -121,6 +124,16 @@ export default function FeedPage() {
             </button>
           ))}
         </div>
+        <button
+          onClick={() => setAiOnly(prev => !prev)}
+          className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer border ${
+            aiOnly
+              ? 'bg-primary text-primary-foreground border-primary'
+              : 'border-border text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          🤖 AI Evaluated
+        </button>
         <span className='text-[11px] text-muted-foreground'>
           {total} activities
         </span>

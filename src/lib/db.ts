@@ -242,6 +242,28 @@ export function updateActivityHfFields(did: string, rkey: string, hfLabel: strin
     .run(hfLabel, hfScore, did, rkey)
 }
 
+// Get activities that have been AI-evaluated (hf_label IS NOT NULL). Sorted by labeled_at DESC.
+export function getAiEvaluatedActivities(limit = 20, offset = 0): ActivityLogEntry[] {
+  const db = getDb()
+  const safeLimit = Math.max(1, Math.min(limit || 20, 100))
+  const safeOffset = Math.max(0, offset || 0)
+  const rows = db.prepare(`
+    SELECT id, did, rkey, uri, title, score, tier, breakdown, test_signals, labeled_at, hf_label, hf_score
+    FROM activities
+    WHERE hf_label IS NOT NULL
+    ORDER BY labeled_at DESC
+    LIMIT ? OFFSET ?
+  `).all(safeLimit, safeOffset) as Array<Record<string, unknown>>
+  return rows.map(rowToEntry)
+}
+
+// Get count of activities that have been AI-evaluated (hf_label IS NOT NULL).
+export function getAiEvaluatedCount(): number {
+  const db = getDb()
+  const row = db.prepare('SELECT COUNT(*) as count FROM activities WHERE hf_label IS NOT NULL').get() as { count: number }
+  return row.count
+}
+
 // Get all activities that have not yet been classified by HF (hf_label IS NULL).
 export function getUnclassifiedActivities(): Array<{ did: string; rkey: string; title: string }> {
   const db = getDb()
