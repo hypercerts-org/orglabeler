@@ -86,14 +86,24 @@ export function closeDb(): void {
   }
 }
 
-// Insert or replace (upsert on did+rkey). Does not throw on duplicates.
+// Upsert on did+rkey. Preserves existing hf_label/hf_score when the new values are null.
 export function logActivity(entry: Omit<ActivityLogEntry, 'id'>, hf?: HfClassificationData): void {
   const db = getDb()
   const stmt = db.prepare(`
-    INSERT OR REPLACE INTO activities
+    INSERT INTO activities
       (did, rkey, uri, title, score, tier, breakdown, test_signals, labeled_at, hf_label, hf_score)
     VALUES
       (@did, @rkey, @uri, @title, @score, @tier, @breakdown, @testSignals, @labeledAt, @hfLabel, @hfScore)
+    ON CONFLICT(did, rkey) DO UPDATE SET
+      uri = excluded.uri,
+      title = excluded.title,
+      score = excluded.score,
+      tier = excluded.tier,
+      breakdown = excluded.breakdown,
+      test_signals = excluded.test_signals,
+      labeled_at = excluded.labeled_at,
+      hf_label = COALESCE(excluded.hf_label, activities.hf_label),
+      hf_score = COALESCE(excluded.hf_score, activities.hf_score)
   `)
   stmt.run({
     did: entry.did,
