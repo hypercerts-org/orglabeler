@@ -73,4 +73,5 @@ export interface LabelStats {
   byTier: Record<LabelTier, number>
   last24h: number
   last7d: number
+  hfCoverage: { classified: number; pending: number; total: number }
 }

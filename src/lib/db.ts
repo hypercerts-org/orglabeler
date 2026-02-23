@@ -195,7 +195,9 @@ export function getStats(): LabelStats {
       SUM(CASE WHEN tier = 'draft' THEN 1 ELSE 0 END) as draft,
       SUM(CASE WHEN tier = 'likely-test' THEN 1 ELSE 0 END) as likely_test,
       SUM(CASE WHEN labeled_at > strftime('%Y-%m-%dT%H:%M:%S', 'now', '-1 day') THEN 1 ELSE 0 END) as last_24h,
-      SUM(CASE WHEN labeled_at > strftime('%Y-%m-%dT%H:%M:%S', 'now', '-7 days') THEN 1 ELSE 0 END) as last_7d
+      SUM(CASE WHEN labeled_at > strftime('%Y-%m-%dT%H:%M:%S', 'now', '-7 days') THEN 1 ELSE 0 END) as last_7d,
+      SUM(CASE WHEN hf_label IS NOT NULL THEN 1 ELSE 0 END) as hf_classified,
+      SUM(CASE WHEN hf_label IS NULL THEN 1 ELSE 0 END) as hf_pending
     FROM activities
   `).get() as Record<string, number>
 
@@ -210,6 +212,11 @@ export function getStats(): LabelStats {
     },
     last24h: row['last_24h'] ?? 0,
     last7d: row['last_7d'] ?? 0,
+    hfCoverage: {
+      classified: row['hf_classified'] ?? 0,
+      pending: row['hf_pending'] ?? 0,
+      total: (row['hf_classified'] ?? 0) + (row['hf_pending'] ?? 0),
+    },
   }
 }
 
