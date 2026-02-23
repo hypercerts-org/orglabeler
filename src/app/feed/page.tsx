@@ -18,12 +18,20 @@ const LIMIT = 20
 export default function FeedPage() {
   const [selectedTier, setSelectedTier] = useState<LabelTier | 'all'>('all')
   const [aiOnly, setAiOnly] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedQuery, setDebouncedQuery] = useState('')
   const [activities, setActivities] = useState<ActivityLogEntry[]>([])
   const [total, setTotal] = useState(0)
   const [offset, setOffset] = useState(0)
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Debounce search query — 300ms delay
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(searchQuery), 300)
+    return () => clearTimeout(timer)
+  }, [searchQuery])
 
   // Fix #2: remove offset from deps — use currentOffset param instead of closure
   const fetchActivities = useCallback(
@@ -34,8 +42,9 @@ export default function FeedPage() {
       try {
         const tierParam = selectedTier === 'all' ? '' : `&tier=${selectedTier}`
         const hfParam = aiOnly ? '&hf=true' : ''
+        const searchParam = debouncedQuery ? `&q=${encodeURIComponent(debouncedQuery)}` : ''
         const res = await fetch(
-          `/api/recent?limit=${LIMIT}&offset=${currentOffset}${tierParam}${hfParam}`
+          `/api/recent?limit=${LIMIT}&offset=${currentOffset}${tierParam}${hfParam}${searchParam}`
         )
         if (!res.ok) throw new Error('API error')
         const data = await res.json()
@@ -57,7 +66,7 @@ export default function FeedPage() {
         setLoadingMore(false)
       }
     },
-    [selectedTier, aiOnly]  // depend on tier and AI filter
+    [selectedTier, aiOnly, debouncedQuery]  // depend on tier, AI filter, and search query
   )
 
   // Fix #3: stable poller — only update if newest item changed, DON'T reset offset
@@ -65,7 +74,8 @@ export default function FeedPage() {
     try {
       const tierParam = selectedTier === 'all' ? '' : `&tier=${selectedTier}`
       const hfParam = aiOnly ? '&hf=true' : ''
-      const res = await fetch(`/api/recent?limit=${LIMIT}&offset=0${tierParam}${hfParam}`)
+      const searchParam = debouncedQuery ? `&q=${encodeURIComponent(debouncedQuery)}` : ''
+      const res = await fetch(`/api/recent?limit=${LIMIT}&offset=0${tierParam}${hfParam}${searchParam}`)
       if (!res.ok) throw new Error('API error')
       const data = await res.json()
       setActivities(prev => {
@@ -78,12 +88,12 @@ export default function FeedPage() {
     } catch (error) {
       console.error('Failed to poll activities:', error)
     }
-  }, [selectedTier, aiOnly])
+  }, [selectedTier, aiOnly, debouncedQuery])
 
-  // Reset and re-fetch when tier changes
+  // Reset and re-fetch when tier, AI filter, or search query changes
   useEffect(() => {
     fetchActivities(0, true)
-  }, [selectedTier, fetchActivities])
+  }, [fetchActivities])
 
   // Poll every 5s for near real-time updates
   useEffect(() => {
@@ -106,6 +116,15 @@ export default function FeedPage() {
           All detected hypercert activity records.
         </p>
       </div>
+
+      {/* Search input */}
+      <input
+        type='text'
+        placeholder='Search by title or DID...'
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        className='w-full px-3 py-2 text-sm bg-secondary border border-border rounded-lg placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary'
+      />
 
       {/* Tier filter + activity count */}
       <div className='flex items-center gap-3 flex-wrap'>

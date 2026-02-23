@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { getRecentActivities, getActivitiesByTier, getTotalCount, getAiEvaluatedActivities, getAiEvaluatedCount } from '@/lib/db'
+import { getRecentActivities, getActivitiesByTier, getTotalCount, getAiEvaluatedActivities, getAiEvaluatedCount, searchActivities, searchActivitiesCount } from '@/lib/db'
 import type { LabelTier, ActivityLogEntry } from '@/lib/types'
 
 const VALID_TIERS: LabelTier[] = ['pending', 'high-quality', 'standard', 'draft', 'likely-test']
@@ -15,6 +15,7 @@ export async function GET(request: Request) {
 
     const tierParam = searchParams.get('tier') as LabelTier | 'all' | null
     const hfOnly = searchParams.get('hf') === 'true'
+    const searchQuery = searchParams.get('q')?.trim() || ''
 
     // Validate tier — if invalid (not one of the 4 tiers or "all"), treat as "all"
     const isValidTier = tierParam && tierParam !== 'all' && VALID_TIERS.includes(tierParam as LabelTier)
@@ -23,7 +24,10 @@ export async function GET(request: Request) {
     let activities: ActivityLogEntry[]
     let total: number
 
-    if (hfOnly) {
+    if (searchQuery) {
+      activities = searchActivities(searchQuery, limit, offset)
+      total = searchActivitiesCount(searchQuery)
+    } else if (hfOnly) {
       activities = getAiEvaluatedActivities(limit, offset)
       total = getAiEvaluatedCount()
     } else if (tier) {

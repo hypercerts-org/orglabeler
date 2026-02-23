@@ -272,6 +272,32 @@ export function getUnclassifiedActivities(): Array<{ did: string; rkey: string; 
   ).all() as Array<{ did: string; rkey: string; title: string }>
 }
 
+// Search activities by title, DID, or URI. Sorted by labeled_at DESC.
+export function searchActivities(query: string, limit = 20, offset = 0): ActivityLogEntry[] {
+  const db = getDb()
+  const safeLimit = Math.max(1, Math.min(limit || 20, 100))
+  const safeOffset = Math.max(0, offset || 0)
+  const pattern = `%${query}%`
+  const rows = db.prepare(`
+    SELECT id, did, rkey, uri, title, score, tier, breakdown, test_signals, labeled_at, hf_label, hf_score
+    FROM activities
+    WHERE title LIKE @pattern OR did LIKE @pattern OR uri LIKE @pattern
+    ORDER BY labeled_at DESC
+    LIMIT @limit OFFSET @offset
+  `).all({ pattern, limit: safeLimit, offset: safeOffset }) as Array<Record<string, unknown>>
+  return rows.map(rowToEntry)
+}
+
+// Get count of activities matching a search query (title, DID, or URI).
+export function searchActivitiesCount(query: string): number {
+  const db = getDb()
+  const pattern = `%${query}%`
+  const row = db.prepare(
+    'SELECT COUNT(*) as count FROM activities WHERE title LIKE ? OR did LIKE ? OR uri LIKE ?'
+  ).get(pattern, pattern, pattern) as { count: number }
+  return row.count
+}
+
 // Fetch a single activity by did + rkey. Returns null if not found.
 export function getActivityByDidRkey(did: string, rkey: string): ActivityLogEntry | null {
   const db = getDb()
