@@ -28,6 +28,13 @@ interface QueueItem {
 const queue: QueueItem[] = []
 let processing = false
 
+type ReclassifyCallback = (uri: string, newTier: string) => Promise<void>
+let _onReclassify: ReclassifyCallback | null = null
+
+export function setReclassifyCallback(cb: ReclassifyCallback): void {
+  _onReclassify = cb
+}
+
 export function enqueueClassification(text: string, did: string, rkey: string): void {
   queue.push({ text, did, rkey })
   if (!processing) processQueue()
@@ -92,6 +99,14 @@ function reclassifyWithHfSignal(did: string, rkey: string, classification: Conte
     breakdown: row.breakdown,
     testSignals: JSON.stringify(updatedSignals),
   })
+
+  // Update ATProto label to match the new tier
+  if (_onReclassify && newTier !== row.tier) {
+    const uri = `at://${did}/${config.ACTIVITY_COLLECTION}/${rkey}`
+    _onReclassify(uri, newTier).catch(err => {
+      console.warn('[hf-classifier] failed to update ATProto label:', err instanceof Error ? err.message : err)
+    })
+  }
 }
 
 let hf: HfInference | null = null

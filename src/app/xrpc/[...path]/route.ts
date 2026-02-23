@@ -32,6 +32,7 @@ async function proxyToLabeler(request: NextRequest, { params }: { params: Promis
       headers: {
         'content-type': response.headers.get('content-type') ?? 'application/json',
         'access-control-allow-origin': '*',
+        'cache-control': 'no-store',
       },
     })
   } catch {
