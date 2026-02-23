@@ -4,7 +4,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { HOST, LABELER_PORT, METRICS_PORT, TAP_URL, TAP_BIND, TAP_DB_PATH, ACTIVITY_COLLECTION } from '../lib/config'
 import { getPendingActivities, deleteActivity } from '../lib/db'
 import { labelerServer, negateAllDIDLabels } from './server'
-import { startTapConsumer } from './tap-consumer'
+import { startTapConsumer, backfillHfClassification } from './tap-consumer'
 import { startMetricsServer } from './metrics'
 import logger from './logger'
 
@@ -154,6 +154,7 @@ async function main() {
   // 5. Start tap consumer (replaces Jetstream subscription)
   consumer = startTapConsumer()
   logger.info('Tap consumer started — receiving backfill + live events')
+  backfillHfClassification()
 }
 
 main().catch((err) => {
