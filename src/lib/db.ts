@@ -272,6 +272,16 @@ export function getUnclassifiedActivities(): Array<{ did: string; rkey: string; 
   ).all() as Array<{ did: string; rkey: string; title: string }>
 }
 
+// Get all activities that have HF classification but were NOT flagged (tier is not 'likely-test')
+// and whose HF label is not 'meaningful project description'.
+// These need re-evaluation against potentially updated thresholds.
+export function getHfClassifiedNonFlagged(): Array<{ did: string; rkey: string; hfLabel: string; hfScore: number }> {
+  const db = getDb()
+  return db.prepare(
+    "SELECT did, rkey, hf_label as hfLabel, hf_score as hfScore FROM activities WHERE hf_label IS NOT NULL AND hf_label != 'meaningful project description' AND tier != 'likely-test' ORDER BY id ASC"
+  ).all() as Array<{ did: string; rkey: string; hfLabel: string; hfScore: number }>
+}
+
 // Search activities by title, DID, or URI. Sorted by labeled_at DESC.
 export function searchActivities(query: string, limit = 20, offset = 0): ActivityLogEntry[] {
   const db = getDb()

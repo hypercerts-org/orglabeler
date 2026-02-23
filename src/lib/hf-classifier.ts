@@ -1,6 +1,6 @@
 import { HfInference } from '@huggingface/inference'
 import * as config from './config'
-import { updateActivityHfFields, getActivityByDidRkey } from './db'
+import { updateActivityHfFields, getActivityByDidRkey, getHfClassifiedNonFlagged } from './db'
 import { tierForScore } from './scorer'
 import { updateActivity } from './db'
 
@@ -158,4 +158,23 @@ export function isLowQualityContent(classification: ContentClassification): bool
   const threshold = HF_LOW_QUALITY_THRESHOLDS[classification.label]
   if (threshold === undefined) return false  // 'meaningful project description' or unknown
   return classification.score > threshold
+}
+
+// Re-evaluate existing HF classifications against current thresholds.
+// Called on startup to catch records that were classified before a threshold change.
+export function reevaluateExistingClassifications(): number {
+  const candidates = getHfClassifiedNonFlagged()
+  let reclassified = 0
+  for (const { did, rkey, hfLabel, hfScore } of candidates) {
+    const classification: ContentClassification = {
+      label: hfLabel,
+      score: hfScore,
+      allScores: {},  // not needed for isLowQualityContent
+    }
+    if (isLowQualityContent(classification)) {
+      reclassifyWithHfSignal(did, rkey, classification)
+      reclassified++
+    }
+  }
+  return reclassified
 }

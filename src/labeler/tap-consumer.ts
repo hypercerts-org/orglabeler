@@ -3,7 +3,7 @@ import type { TapChannel } from '@atproto/tap'
 import { TAP_URL, TAP_ADMIN_PASSWORD, ACTIVITY_COLLECTION } from '../lib/config'
 import { scoreActivity } from '../lib/scorer'
 import { logActivity, getUnclassifiedActivities } from '../lib/db'
-import { enqueueClassification } from '../lib/hf-classifier'
+import { enqueueClassification, reevaluateExistingClassifications } from '../lib/hf-classifier'
 import { applyQualityLabel } from './server'
 import logger from './logger'
 import type { ActivityRecord } from '../lib/types'
@@ -89,6 +89,13 @@ indexer.error((err) => {
 // TODO: store the full concatenated text (title + shortDescription + description) in a
 // dedicated column so backfill can use the same text as the original ingestion path.
 export function backfillHfClassification(): void {
+  // Re-evaluate existing HF results against current thresholds (catches threshold changes)
+  const reclassified = reevaluateExistingClassifications()
+  if (reclassified > 0) {
+    logger.info({ count: reclassified }, 'Re-evaluated HF classifications against updated thresholds')
+  }
+
+  // Then backfill any that have no HF classification at all
   const unclassified = getUnclassifiedActivities()
   if (unclassified.length === 0) {
     logger.info('All activities have HF classification')
