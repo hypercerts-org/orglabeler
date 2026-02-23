@@ -148,16 +148,8 @@ async function classifyContent(text: string, did?: string, rkey?: string): Promi
   }
 }
 
-const HF_LOW_QUALITY_THRESHOLDS: Record<string, number> = {
-  'song lyrics or copypasta': 0.3,
-  'spam or gibberish': 0.35,
-  'test or placeholder data': 0.4,
-}
-
 export function isLowQualityContent(classification: ContentClassification): boolean {
-  const threshold = HF_LOW_QUALITY_THRESHOLDS[classification.label]
-  if (threshold === undefined) return false  // 'meaningful project description' or unknown
-  return classification.score > threshold
+  return classification.label !== 'meaningful project description'
 }
 
 // Re-evaluate existing HF classifications against current thresholds.
