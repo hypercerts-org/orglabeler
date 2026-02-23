@@ -2,9 +2,9 @@ import { Tap, SimpleIndexer } from '@atproto/tap'
 import type { TapChannel } from '@atproto/tap'
 import { TAP_URL, TAP_ADMIN_PASSWORD, ACTIVITY_COLLECTION } from '../lib/config'
 import { scoreActivity } from '../lib/scorer'
-import { logActivity, getUnclassifiedActivities } from '../lib/db'
+import { logActivity, getUnclassifiedActivities, getAllActivitiesForSync } from '../lib/db'
 import { enqueueClassification, reevaluateExistingClassifications } from '../lib/hf-classifier'
-import { applyQualityLabel } from './server'
+import { applyQualityLabel, fetchCurrentLabels } from './server'
 import logger from './logger'
 import type { ActivityRecord } from '../lib/types'
 
@@ -106,6 +106,35 @@ export function backfillHfClassification(): void {
     // We only have title from the DB query — enqueue with title as text
     // (description isn't stored separately, but title is better than nothing)
     enqueueClassification(title, did, rkey)
+  }
+}
+
+export async function syncLabelsWithDb(): Promise<void> {
+  const activities = getAllActivitiesForSync()
+  let synced = 0
+
+  for (const activity of activities) {
+    try {
+      const currentLabels = await fetchCurrentLabels(activity.uri)
+      const currentQuality = [...currentLabels].filter(l =>
+        ['pending', 'high-quality', 'standard', 'draft', 'likely-test'].includes(l)
+      )
+
+      // If the ATProto label doesn't match the DB tier, update it
+      if (!currentQuality.includes(activity.tier)) {
+        logger.info({ uri: activity.uri, dbTier: activity.tier, atprotoLabels: currentQuality }, 'Syncing mismatched label')
+        await applyQualityLabel(activity.uri, activity.tier)
+        synced++
+      }
+    } catch (err) {
+      logger.warn({ err, uri: activity.uri }, 'Failed to sync label, continuing')
+    }
+  }
+
+  if (synced > 0) {
+    logger.info({ count: synced }, 'Synced mismatched ATProto labels with DB tiers')
+  } else {
+    logger.info('All ATProto labels match DB tiers')
   }
 }
 

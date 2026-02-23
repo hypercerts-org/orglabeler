@@ -282,6 +282,14 @@ export function getHfClassifiedNonFlagged(): Array<{ did: string; rkey: string; 
   ).all() as Array<{ did: string; rkey: string; hfLabel: string; hfScore: number }>
 }
 
+// Get all activities with their current tier. Used for label sync on startup.
+export function getAllActivitiesForSync(): Array<{ did: string; rkey: string; uri: string; tier: string }> {
+  const db = getDb()
+  return db.prepare(
+    'SELECT did, rkey, uri, tier FROM activities ORDER BY id ASC'
+  ).all() as Array<{ did: string; rkey: string; uri: string; tier: string }>
+}
+
 // Search activities by title, DID, or URI. Sorted by labeled_at DESC.
 export function searchActivities(query: string, limit = 20, offset = 0): ActivityLogEntry[] {
   const db = getDb()

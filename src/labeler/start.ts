@@ -4,7 +4,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { HOST, LABELER_PORT, METRICS_PORT, TAP_URL, TAP_BIND, TAP_DB_PATH, ACTIVITY_COLLECTION } from '../lib/config'
 import { getPendingActivities, deleteActivity } from '../lib/db'
 import { labelerServer, negateAllDIDLabels, applyQualityLabel } from './server'
-import { startTapConsumer, backfillHfClassification } from './tap-consumer'
+import { startTapConsumer, backfillHfClassification, syncLabelsWithDb } from './tap-consumer'
 import { setReclassifyCallback } from '../lib/hf-classifier'
 import { startMetricsServer } from './metrics'
 import logger from './logger'
@@ -159,6 +159,12 @@ async function main() {
   consumer = startTapConsumer()
   logger.info('Tap consumer started — receiving backfill + live events')
   backfillHfClassification()
+
+  // One-time sync: fix any records where DB tier disagrees with ATProto label
+  // (caused by pre-fix HF reclassifications that only updated the DB)
+  syncLabelsWithDb().catch(err => {
+    logger.warn({ err }, 'Label sync failed — will retry on next restart')
+  })
 }
 
 main().catch((err) => {
