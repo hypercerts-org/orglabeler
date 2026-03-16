@@ -1,5 +1,6 @@
 import type { ActivityRecord, ScoreResult, ScoreBreakdown, LabelTier } from './types'
 import { TEST_PATTERNS, SCORE_THRESHOLDS } from './constants'
+import { extractDescriptionText } from './lexicon-utils'
 
 interface RepetitionResult {
   lineRepeatRatio: number
@@ -33,10 +34,13 @@ export function detectRepetition(text: string): RepetitionResult {
 export function scoreActivity(record: ActivityRecord): ScoreResult {
   const testSignals: string[] = []
 
-  // --- Test signal detection (checked BEFORE scoring) ---
+  // --- Text extraction ---
+  // description is now a pub.leaflet.pages.linearDocument — extract plain text
   const title = record.title ?? ''
   const shortDesc = record.shortDescription ?? ''
-  const desc = record.description ?? ''
+  const desc = extractDescriptionText(record.description)
+
+  // --- Test signal detection (checked BEFORE scoring) ---
 
   // title matches test pattern
   if (TEST_PATTERNS.some(p => p.test(title.trim()))) {
@@ -114,6 +118,7 @@ export function scoreActivity(record: ActivityRecord): ScoreResult {
   }
 
   // 3. descriptionQuality (0-20)
+  // desc is now extracted plain text from the linearDocument blocks
   let descriptionQuality = 0
   if (!desc || desc.length === 0) {
     descriptionQuality = 0
@@ -128,60 +133,67 @@ export function scoreActivity(record: ActivityRecord): ScoreResult {
   }
 
   // 4. hasImage (0-10)
+  // image is now a typed union: org.hypercerts.defs#uri ({uri}) or org.hypercerts.defs#smallImage ({image: blob})
+  // Both variants are discriminated by $type
   const image = record.image
   let hasImage = 0
   if (image) {
-    if (typeof image === 'string' && image.length > 0) {
-      hasImage = 10
-    } else if (typeof image === 'object' && (('uri' in image && image.uri) || ('file' in image && image.file))) {
-      hasImage = 10
+    const imageType = (image as { $type?: string }).$type
+    if (imageType === 'org.hypercerts.defs#uri') {
+      const uri = (image as { uri?: string }).uri
+      if (typeof uri === 'string' && uri.length > 0) hasImage = 10
+    } else if (imageType === 'org.hypercerts.defs#smallImage') {
+      // blob presence — if the field exists the image was uploaded
+      if ((image as { image?: unknown }).image) hasImage = 10
     }
   }
 
   // 5. hasWorkScope (0-10)
+  // workScope is now a typed union:
+  //   org.hypercerts.workscope.cel  → structured CEL object with `expression`
+  //   org.hypercerts.claim.activity#workScopeString → {scope: string}
   const workScope = record.workScope
   let hasWorkScope = 0
   if (workScope) {
-    if (typeof workScope === 'string' && workScope.length > 0) {
+    const wsType = (workScope as { $type?: string }).$type
+    if (wsType === 'org.hypercerts.workscope.cel') {
+      // CEL scope always has `expression` — structured, high-quality signal
       hasWorkScope = 10
-    } else if (typeof workScope === 'object') {
-      if (
-        ('uri' in workScope && workScope.uri) ||
-        ('cid' in workScope && workScope.cid) ||
-        ('labels' in workScope && Array.isArray(workScope.labels) && workScope.labels.length > 0) ||
-        ('expression' in workScope && typeof workScope.expression === 'string' && workScope.expression.length > 0)
-      ) {
-        hasWorkScope = 10
-      }
+    } else if (wsType === 'org.hypercerts.claim.activity#workScopeString') {
+      const scope = (workScope as { scope?: string }).scope
+      if (typeof scope === 'string' && scope.length > 0) hasWorkScope = 10
+    } else if (wsType !== undefined) {
+      // Unknown future variant — treat as present
+      hasWorkScope = 10
     }
   }
 
   // 6. contributorQuality (0-15)
+  // contributorsWeights top-level array is gone from the new lexicon.
+  // Weight is always inline as contributor.contributionWeight (string).
+  // contributorIdentity is a typed union:
+  //   org.hypercerts.claim.activity#contributorIdentity → {identity: string}
+  //   com.atproto.repo.strongRef                        → {uri, cid}
+  // contributionDetails is a typed union:
+  //   org.hypercerts.claim.activity#contributorRole     → {role: string}
+  //   com.atproto.repo.strongRef                        → {uri, cid}
   const contributors = record.contributors ?? []
-  const contributorsWeights = record.contributorsWeights ?? []
   let contributorQuality = 0
 
   if (contributors.length >= 1) {
-    // Check for weights from either source:
-    // - Inline: contributor objects with contributionWeight field
-    // - Top-level: contributorsWeights number array
-    const inlineWeightCount = contributors.filter(c =>
-      'contributionWeight' in c && c.contributionWeight != null && c.contributionWeight !== ''
-    ).length
-    const topLevelWeightCount = contributorsWeights.filter(w => w != null).length
-    const hasWeights = Math.max(inlineWeightCount, topLevelWeightCount)
-
-    // Check for details (only available in inline shape)
-    const hasDetails = contributors.filter(c =>
-      'contributionDetails' in c && c.contributionDetails != null && c.contributionDetails !== ''
+    const weightCount = contributors.filter(c =>
+      typeof c.contributionWeight === 'string' &&
+      c.contributionWeight.trim().length > 0
     ).length
 
-    if (contributors.length >= 2 && hasWeights >= 2 && hasDetails >= 1) {
+    const detailsCount = contributors.filter(c => c.contributionDetails != null).length
+
+    if (contributors.length >= 2 && weightCount >= 2 && detailsCount >= 1) {
       contributorQuality = 15
-    } else if (contributors.length >= 2 && hasWeights >= 2) {
-      // Reference-style contributors with weights but no inline details
+    } else if (contributors.length >= 2 && weightCount >= 2) {
+      // Strong-ref contributors with weights but no inline role details
       contributorQuality = 12
-    } else if (hasWeights >= 1) {
+    } else if (weightCount >= 1) {
       contributorQuality = 10
     } else {
       // Contributors listed but no weights
@@ -190,6 +202,7 @@ export function scoreActivity(record: ActivityRecord): ScoreResult {
   }
 
   // 7. hasLocations (0-5)
+  // locations is now com.atproto.repo.strongRef[] — same scoring logic
   const locations = record.locations ?? []
   const hasLocations = locations.length >= 1 ? 5 : 0
 
@@ -204,9 +217,10 @@ export function scoreActivity(record: ActivityRecord): ScoreResult {
   }
 
   // 9. hasRights (0-5)
+  // rights is now com.atproto.repo.strongRef — same scoring logic
   const hasRights = record.rights ? 5 : 0
 
-  // 10. Repetition detection
+  // 10. Repetition detection (on extracted plain text)
   const descRep = detectRepetition(desc)
   const descLines = desc.split('\n').filter(l => l.trim().length > 0)
   const descWords = desc.split(/\s+/).filter(w => w.length > 0)
