@@ -27,7 +27,7 @@ A single Railway service runs two processes concurrently via `concurrently`:
 
 | Process | What it does |
 |---------|-------------|
-| **Next.js** (`port 3000`) | Dashboard UI + API routes (`/api/stats`, `/api/recent`, `/xrpc/...`) |
+| **Next.js** (port from `$PORT` env var) | Dashboard UI + API routes (`/api/stats`, `/api/recent`, `/xrpc/...`) |
 | **Labeler** | AT Protocol labeler server + Tap sidecar + HuggingFace classifier |
 
 The labeler process itself spawns a third subprocess — **Tap** — which is a binary copied from `ghcr.io/bluesky-social/indigo/tap:latest` during the Docker build.
@@ -158,16 +158,16 @@ If `tap.db` is wiped, Tap will backfill from the beginning of the firehose, whic
 
 ## Ports
 
-Railway automatically routes external traffic to port `3000` (Next.js). The other ports are internal only.
+Railway injects a `PORT` environment variable at runtime. Next.js automatically reads `$PORT` and binds to it — you will see something like `http://localhost:8080` in the deploy logs. **Do not assume port `3000`** — the actual port depends on what Railway assigns.
 
 | Port | Service | External? |
 |------|---------|-----------|
-| `3000` | Next.js dashboard + API | Yes (Railway routes here) |
-| `4100` | AT Proto labeler endpoint | Yes (must be accessible for AT Protocol) |
-| `2480` | Tap sidecar | No (localhost only) |
-| `4101` | Prometheus metrics | No (internal only) |
+| `$PORT` (Railway-assigned) | Next.js dashboard + API | Yes — Railway routes all external HTTP traffic here |
+| `4100` | AT Proto labeler endpoint | Yes — must be accessible for AT Protocol label queries |
+| `2480` | Tap sidecar | No — localhost only |
+| `4101` | Prometheus metrics | No — internal only |
 
-> **Important:** Port `4100` (the labeler endpoint) must be publicly reachable for the AT Protocol network to send label queries. Railway exposes all `EXPOSE`d ports — check **Service → Settings → Networking** to confirm `4100` has a public URL and set `LABELER_ENDPOINT` to that URL.
+> **Important:** Port `4100` (the labeler endpoint) must be publicly reachable for the AT Protocol network. Railway exposes all `EXPOSE`d ports — check **Service → Settings → Networking** to confirm `4100` has a public URL, then set `LABELER_ENDPOINT` to that URL.
 
 ---
 
@@ -175,8 +175,9 @@ Railway automatically routes external traffic to port `3000` (Next.js). The othe
 
 1. Go to **Service → Settings → Networking → Custom Domain**
 2. Add your domain (e.g. `labeler.yourdomain.com`)
-3. Railway provides CNAME/ALIAS DNS records to set at your registrar
-4. Once DNS propagates, update `LABELER_ENDPOINT` to your custom domain URL
+3. If Railway asks you to pick a port, **leave it blank or select the Railway-assigned port** — do not type `3000`. Railway will route traffic automatically based on the `$PORT` env var it injects at runtime.
+4. Railway provides CNAME/ALIAS DNS records to set at your registrar
+5. Once DNS propagates, update `LABELER_ENDPOINT` to your custom domain URL
 
 ---
 
@@ -264,6 +265,19 @@ Healthcheck failed after 30s — /api/stats did not return 200
 **Cause:** Two instances are running simultaneously (e.g. during a rolling deploy), both trying to write the same SQLite file.
 
 **Fix:** `railway.toml` already sets `numReplicas = 1` which prevents this. If you see it anyway, ensure you haven't overridden this in the Railway dashboard.
+
+---
+
+#### Tap health check times out / "Tap did not become healthy after 30 attempts"
+
+```
+[labeler] Fatal error in labeler process
+[labeler]   "message": "Tap did not become healthy after 30 attempts"
+```
+
+**Cause:** If `TAP_ADMIN_PASSWORD` is set, Tap's admin auth middleware wraps **all routes including `/health`**, returning `401` instead of `200`. Older versions of the code treated any non-`200` response as "not ready". This has been fixed — the health check now accepts any response under `500` as "tap is up".
+
+If you see this on a fresh deployment after the fix, it means Tap itself is failing to start. Check the lines immediately before the error in the logs for a Tap-level error.
 
 ---
 

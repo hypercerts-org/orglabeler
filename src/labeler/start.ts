@@ -53,12 +53,14 @@ async function waitForTap(url: string, maxAttempts = 30, intervalMs = 1000): Pro
   for (let i = 0; i < maxAttempts; i++) {
     try {
       const res = await fetch(`${url}/health`)
-      if (res.ok) {
-        logger.info('Tap is healthy')
+      // Any HTTP response (including 401 when TAP_ADMIN_PASSWORD is set)
+      // means Tap is up and listening. Only network errors mean it isn't ready.
+      if (res.status < 500) {
+        logger.info({ status: res.status }, 'Tap is healthy')
         return
       }
     } catch {
-      // tap not ready yet
+      // tap not ready yet — connection refused or similar
     }
     await new Promise(r => setTimeout(r, intervalMs))
   }
