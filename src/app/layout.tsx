@@ -51,7 +51,13 @@ export const metadata: Metadata = {
   },
 }
 
+const COMMIT_SHA = process.env.NEXT_PUBLIC_COMMIT_SHA ?? process.env.RAILWAY_GIT_COMMIT_SHA ?? null
+const DEPLOY_TIME = process.env.NEXT_PUBLIC_DEPLOY_TIME ?? new Date().toISOString()
+
 export default function RootLayout({ children }: { children: ReactNode }) {
+  const shortSha = COMMIT_SHA ? COMMIT_SHA.slice(0, 7) : null
+  const deployDate = new Date(DEPLOY_TIME).toUTCString().replace(' GMT', ' UTC')
+
   return (
     <html lang='en' suppressHydrationWarning>
       <body
@@ -64,6 +70,15 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <main className='relative flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 pb-8'>
               {children}
             </main>
+            <footer className='relative z-10 border-t border-border/40 py-3 px-4'>
+              <p className='text-center text-xs text-muted-foreground font-mono'>
+                {shortSha ? (
+                  <>deployed <span className='opacity-70'>{deployDate}</span> &middot; <span className='opacity-70'>{shortSha}</span></>
+                ) : (
+                  <>deployed <span className='opacity-70'>{deployDate}</span></>
+                )}
+              </p>
+            </footer>
           </div>
         </ThemeProvider>
       </body>

@@ -19,8 +19,11 @@ RUN npm ci
 # Copy source
 COPY . .
 
-# Build Next.js
-RUN npm run build
+# Build Next.js — bake deploy timestamp and git SHA into the image
+ARG RAILWAY_GIT_COMMIT_SHA
+ENV NEXT_PUBLIC_COMMIT_SHA=$RAILWAY_GIT_COMMIT_SHA
+ENV NEXT_PUBLIC_DEPLOY_TIME=""
+RUN NEXT_PUBLIC_DEPLOY_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ") npm run build
 
 # Expose ports: Next.js (3000), LabelerServer (4100), Metrics (4101), Tap (2480)
 EXPOSE 3000 4100 4101 2480
