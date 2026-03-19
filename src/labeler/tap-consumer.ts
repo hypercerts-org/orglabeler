@@ -5,8 +5,9 @@ import { scoreActivity } from '../lib/scorer'
 import { logActivity, getUnclassifiedActivities, getAllActivitiesForSync } from '../lib/db'
 import { enqueueClassification, reevaluateExistingClassifications } from '../lib/hf-classifier'
 import { applyQualityLabel, fetchCurrentLabels } from './server'
+import { extractDescriptionText } from '../lib/lexicon-utils'
 import logger from './logger'
-import type { ActivityRecord } from '../lib/types'
+import { $safeParse } from '../lexicons/org/hypercerts/claim/activity.defs'
 
 const tapConfig = TAP_ADMIN_PASSWORD ? { adminPassword: TAP_ADMIN_PASSWORD } : undefined
 const tap = new Tap(TAP_URL, tapConfig)
@@ -28,7 +29,16 @@ indexer.record(async (evt) => {
     return
   }
 
-  const record = evt.record as unknown as ActivityRecord
+  // Validate against the org.hypercerts.claim.activity lexicon
+  const parsed = $safeParse(evt.record)
+  if (!parsed.success) {
+    logger.warn(
+      { did: evt.did, rkey: evt.rkey, reason: parsed.reason?.message },
+      'Record failed lexicon validation — skipping',
+    )
+    return
+  }
+  const record = parsed.value
   const source = evt.live === false ? 'backfill' : 'live'
 
   // Normalize title once — scorer sees raw value (empty string if absent),
@@ -76,7 +86,9 @@ indexer.record(async (evt) => {
   }
 
   // Step 4: Fire-and-forget: enqueue HF classification (runs in background, updates DB when done)
-  const text = [record.title ?? '', record.shortDescription ?? '', record.description ?? ''].filter(Boolean).join(' ')
+  // description is now a pub.leaflet.pages.linearDocument object — extract plain text from blocks
+  const descText = extractDescriptionText(record.description)
+  const text = [record.title ?? '', record.shortDescription ?? '', descText].filter(Boolean).join(' ')
   enqueueClassification(text, evt.did, evt.rkey)
 })
 

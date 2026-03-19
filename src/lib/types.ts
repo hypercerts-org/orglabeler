@@ -1,27 +1,7 @@
-// Activity record fields (matches org.hypercerts.claim.activity lexicon)
-export interface ActivityRecord {
-  $type?: string
-  title: string
-  shortDescription: string
-  description?: string
-  image?: string | { $type?: string; uri?: string } | { $type?: string; file?: unknown }
-  workScope?: { uri?: string; cid?: string } | { labels?: string[]; expression?: string } | string
-  contributors?: (ActivityContributor | { uri: string; cid: string })[]
-  contributorsWeights?: number[]
-  locations?: Array<{ uri: string; cid: string }>
-  startDate?: string
-  endDate?: string
-  rights?: { uri: string; cid: string }
-  createdAt: string
-  descriptionFacets?: unknown[]
-  shortDescriptionFacets?: unknown[]
-}
-
-export interface ActivityContributor {
-  contributorIdentity: string | { uri: string; cid: string }
-  contributionWeight?: string
-  contributionDetails?: string | { uri: string; cid: string }
-}
+// Activity record — re-exported from generated lexicon types
+// The canonical shape is defined in lexicons/org/hypercerts/claim/activity.json
+export type { Main as ActivityRecord } from '../lexicons/org/hypercerts/claim/activity.defs'
+export type { Contributor as ActivityContributor } from '../lexicons/org/hypercerts/claim/activity.defs'
 
 // Scoring
 export type LabelTier = 'pending' | 'high-quality' | 'standard' | 'draft' | 'likely-test'

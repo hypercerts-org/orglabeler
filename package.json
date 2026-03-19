@@ -11,10 +11,12 @@
     "start:all": "concurrently --names \"next,labeler\" --prefix-colors \"blue,green\" \"npm run start\" \"npm run dev:labeler\"",
     "set-labels": "tsx src/labeler/set-labels.ts",
     "setup": "tsx src/labeler/setup.ts",
-    "reset": "tsx src/labeler/reset-db.ts"
+    "reset": "tsx src/labeler/reset-db.ts",
+    "gen:lexicons": "ts-lex build --lexicons ./lexicons --out ./src/lexicons --clear --import-ext \"\""
   },
   "dependencies": {
     "@atproto/api": "^0.13.0",
+    "@atproto/lex": "^0.0.20",
     "@atproto/crypto": "^0.4.5",
     "@atproto/tap": "^0.2.4",
     "@huggingface/inference": "^4.13.12",
@@ -39,6 +41,7 @@
     "node": ">=22 <23"
   },
   "devDependencies": {
+    "@atproto/lex": "^0.0.20",
     "@types/better-sqlite3": "^7.6.0",
     "@types/express": "^5.0.0",
     "@types/node": "^22.0.0",
