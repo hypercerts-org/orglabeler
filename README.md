@@ -1,17 +1,17 @@
-# Hyperlabel
+# Certified Profile Labeler
 
-> Automated quality scoring for hypercert activity records on AT Protocol
+> Automated quality scoring for `app.certified.actor.profile` records on AT Protocol
 
-Monitors `org.hypercerts.claim.activity` records on the network and labels authors based on how completely they fill out their activity claims. Fights spam/test hypercerts with tiered quality labels.
+This fork monitors `app.certified.actor.profile` records and labels authors based on how complete and well-formed their profile data is. It uses tiered quality labels to distinguish polished profiles from sparse or placeholder records.
 
 ## Labels
 
 | Label | Score | Meaning |
 |-------|-------|---------|
-| ✦ High Quality | 75-100 | Well-documented, comprehensive activity claim |
-| ● Standard | 50-74 | Adequate but could be more detailed |
-| ◌ Draft | 20-49 | Minimal information, work in progress |
-| ⚠ Likely Test | 0-19 | Spam or placeholder data |
+| ✦ High Quality | 75-100 | Complete, well-presented profile with strong detail |
+| ● Standard | 50-74 | Solid profile with the main fields filled in |
+| ◌ Draft | 20-49 | Sparse profile that looks unfinished |
+| ⚠ Likely Test | 0-19 | Placeholder, spam, or obvious test data |
 
 ## Quick Start
 
@@ -22,7 +22,7 @@ Monitors `org.hypercerts.claim.activity` records on the network and labels autho
 ### Setup
 ```bash
 git clone <repo>
-cd hyperlabel
+cd orglabeler
 npm install
 
 # Works with any AT Protocol PDS (not just bsky.social)
@@ -32,7 +32,7 @@ npm run setup -- your-handle.bsky.social your-password https://labeler.yourdomai
 npm run setup -- satyam2.climateai.org yourpassword https://labeler.climateai.org
 ```
 
-The setup script automatically resolves your account's PDS endpoint from the DID document. It works with any AT Protocol PDS, not just bsky.social.
+The setup script automatically resolves your account's PDS endpoint from the DID document, so it works with any AT Protocol PDS.
 
 The setup script will:
 1. Generate a signing key
@@ -60,39 +60,39 @@ npm run dev:labeler    # Labeler backend on port 4100 + metrics on 4101
 │  Relay          │───▶│  (port 2480)     │    │  Dashboard       │
 │  (firehose)     │    │  Backfill + Live │    │  (port 3000)     │
 └─────────────────┘    └────────┬─────────┘    │                  │
-                                │              │  Reads from      │
-                       ┌────────▼─────────┐    │  activity-log.db │
-                       │  Labeler Process  │    └────────┬─────────┘
-                       │  (port 4100)     │             │
-                       │  Score → Label   │      ┌──────▼───────┐
-                       │  → Log to SQLite │      │activity-log.db│
-                       └────────┬─────────┘      │ (dashboard)  │
-                                │                └──────────────┘
-                         ┌──────▼───────┐
-                         │ labels.db    │
-                         │ (AT Proto)   │
-                         └──────────────┘
+                                 │              │  Reads from      │
+                        ┌────────▼─────────┐    │  activity-log.db │
+                        │  Labeler Process  │    └────────┬─────────┘
+                        │  (port 4100)     │             │
+                        │  Score → Label   │      ┌──────▼───────┐
+                        │  → Log to SQLite │      │activity-log.db│
+                        └────────┬─────────┘      │ (dashboard)  │
+                                 │                └──────────────┘
+                          ┌──────▼───────┐
+                          │ labels.db    │
+                          │ (AT Proto)   │
+                          └──────────────┘
 ```
 
-The labeler auto-detects the PDS for non-bsky.social accounts via DID document resolution, so it works seamlessly across any AT Protocol PDS.
+The labeler auto-detects the PDS for non-bsky.social accounts via DID document resolution, so it works across any AT Protocol PDS.
 
 ## Scoring
 
-Scores `org.hypercerts.claim.activity` records on 9 criteria (100 points total):
+Scores `app.certified.actor.profile` records on 9 criteria (100 points total):
 
 | Criterion | Max Points | What it checks |
 |-----------|-----------|----------------|
-| Title Quality | 15 | Length, proper phrasing |
-| Summary Quality | 15 | Short description depth |
-| Description | 20 | Long description presence + depth |
-| Image | 10 | Visual representation present |
-| Work Scope | 10 | Scope definition present |
+| Display Name | 15 | Length, clarity, and whether it looks like a real name |
+| Short Description | 15 | Presence and quality of the profile summary |
+| Description | 20 | Longer bio or about section depth |
+| Image | 10 | Profile image present |
+| Scope | 10 | Structured scope or focus information present |
 | Contributors | 15 | Contributor list with weights/details |
-| Locations | 5 | Geographic references |
-| Date Range | 5 | Start + end dates |
-| Rights | 5 | Rights reference present |
+| Locations | 5 | Location references present |
+| Date Range | 5 | Start and end dates present |
+| Rights | 5 | Rights or attribution references present |
 
-Test detection: Regex patterns catch common test strings ("test", "asdf", "lorem ipsum", etc.) and override the score to force ⚠ Likely Test.
+Test detection: regex patterns catch common placeholder strings (`test`, `asdf`, `lorem ipsum`, etc.) and override the score to force ⚠ Likely Test.
 
 ## Scripts
 
