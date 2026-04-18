@@ -7,7 +7,8 @@ import { enqueueClassification, reevaluateExistingClassifications } from '../lib
 import { applyQualityLabel, fetchCurrentLabels } from './server'
 import { extractDescriptionText } from '../lib/lexicon-utils'
 import logger from './logger'
-import { $safeParse } from '../lexicons/org/hypercerts/claim/activity.defs'
+import type { ActivityRecord } from '../lib/types'
+import { $safeParse } from '../lexicons/app/certified/actor/organization.defs'
 
 const tapConfig = TAP_ADMIN_PASSWORD ? { adminPassword: TAP_ADMIN_PASSWORD } : undefined
 const tap = new Tap(TAP_URL, tapConfig)
@@ -29,7 +30,7 @@ indexer.record(async (evt) => {
     return
   }
 
-  // Validate against the org.hypercerts.claim.activity lexicon
+  // Validate against the app.certified.actor.organization lexicon
   const parsed = $safeParse(evt.record)
   if (!parsed.success) {
     logger.warn(
@@ -38,7 +39,7 @@ indexer.record(async (evt) => {
     )
     return
   }
-  const record = parsed.value
+  const record = parsed.value as ActivityRecord
   const source = evt.live === false ? 'backfill' : 'live'
 
   // Normalize title once — scorer sees raw value (empty string if absent),

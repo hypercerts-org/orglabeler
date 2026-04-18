@@ -177,7 +177,10 @@ export function scoreActivity(record: ActivityRecord): ScoreResult {
   // contributionDetails is a typed union:
   //   org.hypercerts.claim.activity#contributorRole     → {role: string}
   //   com.atproto.repo.strongRef                        → {uri, cid}
-  const contributors = record.contributors ?? []
+  const contributors: Array<{
+    contributionWeight?: string
+    contributionDetails?: unknown
+  }> = record.contributors ?? []
   let contributorQuality = 0
 
   if (contributors.length >= 1) {
@@ -222,8 +225,8 @@ export function scoreActivity(record: ActivityRecord): ScoreResult {
 
   // 10. Repetition detection (on extracted plain text)
   const descRep = detectRepetition(desc)
-  const descLines = desc.split('\n').filter(l => l.trim().length > 0)
-  const descWords = desc.split(/\s+/).filter(w => w.length > 0)
+  const descLines = desc.split('\n').filter((l: string) => l.trim().length > 0)
+  const descWords = desc.split(/\s+/).filter((w: string) => w.length > 0)
 
   if (descRep.lineRepeatRatio < 0.4 && descLines.length > 8) {
     testSignals.push(`description has high line repetition (${descRep.lineRepeatRatio.toFixed(2)})`)
@@ -237,8 +240,8 @@ export function scoreActivity(record: ActivityRecord): ScoreResult {
 
   const shortDescText = record.shortDescription ?? ''
   const shortRep = detectRepetition(shortDescText)
-  const shortDescLines = shortDescText.split('\n').filter(l => l.trim().length > 0)
-  const shortDescWordList = shortDescText.split(/\s+/).filter(w => w.length > 0)
+  const shortDescLines = shortDescText.split('\n').filter((l: string) => l.trim().length > 0)
+  const shortDescWordList = shortDescText.split(/\s+/).filter((w: string) => w.length > 0)
 
   if (shortRep.lineRepeatRatio < 0.3 && shortDescLines.length > 8) {
     testSignals.push(`short description has high line repetition (${shortRep.lineRepeatRatio.toFixed(2)})`)
@@ -251,7 +254,7 @@ export function scoreActivity(record: ActivityRecord): ScoreResult {
   }
 
   // Count repetition signals added above (signals containing 'repetition' or 'repeated')
-  const repetitionSignalCount = testSignals.filter(s =>
+  const repetitionSignalCount = testSignals.filter((s: string) =>
     s.includes('repetition') || s.includes('repeated')
   ).length
   const repetitionFlags = Math.max(-15, repetitionSignalCount * -5)

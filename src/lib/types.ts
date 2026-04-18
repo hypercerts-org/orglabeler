@@ -1,7 +1,26 @@
-// Activity record — re-exported from generated lexicon types
-// The canonical shape is defined in lexicons/org/hypercerts/claim/activity.json
-export type { Main as ActivityRecord } from '../lexicons/org/hypercerts/claim/activity.defs'
-export type { Contributor as ActivityContributor } from '../lexicons/org/hypercerts/claim/activity.defs'
+import type { Main as OrganizationRecordBase } from '../lexicons/app/certified/actor/organization.defs'
+import type { Main as LinearDocument } from '../lexicons/pub/leaflet/pages/linearDocument.defs'
+
+// Organization record — re-exported from generated lexicon types
+// The canonical shape is defined in lexicons/app/certified/actor/organization.json
+export type { Main as OrganizationRecord } from '../lexicons/app/certified/actor/organization.defs'
+
+// Backwards-compatible ingestion shape used by scoring code until that pipeline is migrated.
+export type ActivityRecord = OrganizationRecordBase & {
+  title?: string
+  shortDescription?: string
+  description?: LinearDocument
+  image?: unknown
+  workScope?: unknown
+  contributors?: Array<{
+    contributionWeight?: string
+    contributionDetails?: unknown
+  }>
+  locations?: unknown[]
+  startDate?: string
+  endDate?: string
+  rights?: unknown
+}
 
 // Scoring
 export type LabelTier = 'pending' | 'high-quality' | 'standard' | 'draft' | 'likely-test'
