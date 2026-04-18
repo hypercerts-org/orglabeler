@@ -15,10 +15,10 @@
     "gen:lexicons": "ts-lex build --lexicons ./lexicons --out ./src/lexicons --clear --import-ext \"\""
   },
   "dependencies": {
-    "@atproto/api": "^0.13.0",
-    "@atproto/lex": "^0.0.20",
+    "@atproto/api": "0.19.9",
     "@atproto/crypto": "^0.4.5",
-    "@atproto/tap": "^0.2.4",
+    "@atproto/lex": "^0.0.20",
+    "@atproto/tap": "0.2.13",
     "@huggingface/inference": "^4.13.12",
     "@skyware/bot": "^0.4.0",
     "@skyware/labeler": "^0.2.0",
