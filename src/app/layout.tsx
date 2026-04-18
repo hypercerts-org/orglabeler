@@ -35,11 +35,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: 'OrgLabeler',
   description: 'Label certified organizations on AT Protocol.',
-  metadataBase: new URL('https://hyperlabel-production.up.railway.app'),
+  metadataBase: new URL('https://orglabeler-production.up.railway.app'),
   openGraph: {
     title: 'OrgLabeler',
     description: 'Label certified organizations on AT Protocol.',
-    url: 'https://hyperlabel-production.up.railway.app',
+    url: 'https://orglabeler-production.up.railway.app',
     siteName: 'OrgLabeler',
     locale: 'en_US',
     type: 'website',
