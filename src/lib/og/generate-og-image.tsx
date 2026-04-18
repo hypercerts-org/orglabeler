@@ -79,7 +79,7 @@ export async function generateOGImage({ title, subtitle }: GenerateOGImageOption
                 textTransform: 'uppercase',
               }}
             >
-              Hyperlabel
+              OrgLabeler
             </span>
             <span
               style={{

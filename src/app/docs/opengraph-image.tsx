@@ -5,7 +5,7 @@ export const runtime = 'edge'
 
 export default async function OGImage() {
   return generateOGImage({
-    title: 'Documentation',
-    subtitle: 'How Hyperlabel scores and labels hypercert activity records',
+    title: 'OrgLabeler Docs',
+    subtitle: 'How OrgLabeler labels certified organizations on AT Protocol',
   })
 }

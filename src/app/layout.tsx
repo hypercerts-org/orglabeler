@@ -33,21 +33,21 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'Hyperlabel',
-  description: 'Automated quality scoring for hypercert activity records on AT Protocol.',
+  title: 'OrgLabeler',
+  description: 'Label certified organizations on AT Protocol.',
   metadataBase: new URL('https://hyperlabel-production.up.railway.app'),
   openGraph: {
-    title: 'Hyperlabel',
-    description: 'Automated quality scoring for hypercert activity records on AT Protocol.',
+    title: 'OrgLabeler',
+    description: 'Label certified organizations on AT Protocol.',
     url: 'https://hyperlabel-production.up.railway.app',
-    siteName: 'Hyperlabel',
+    siteName: 'OrgLabeler',
     locale: 'en_US',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Hyperlabel',
-    description: 'Automated quality scoring for hypercert activity records on AT Protocol.',
+    title: 'OrgLabeler',
+    description: 'Label certified organizations on AT Protocol.',
   },
 }
 
