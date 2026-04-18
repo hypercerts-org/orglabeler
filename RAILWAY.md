@@ -1,6 +1,6 @@
-# Deploying Hyperlabel on Railway
+# Deploying the Certified Organization Labeler fork on Railway
 
-This guide covers everything you need to deploy Hyperlabel on [Railway](https://railway.app) — from first-time setup to debugging failed deploys.
+This guide covers everything you need to deploy the Certified Organization Labeler fork on [Railway](https://railway.app) — from first-time setup to debugging failed deploys.
 
 ---
 
@@ -50,7 +50,7 @@ All three share the same filesystem, which is why a single Railway service with 
 
 1. Go to [railway.app/new](https://railway.app/new)
 2. Choose **Deploy from GitHub repo**
-3. Select the `hyperlabel` repository
+3. Select the `certified-organization-labeler` repository
 4. Railway will detect `railway.toml` automatically and use the `Dockerfile`
 
 ### 2. Set environment variables
@@ -89,9 +89,9 @@ Set these in **Railway → Service → Variables**.
 |----------|-------------|---------|
 | `DID` | DID of your labeler Bluesky account | `did:plc:abc123...` |
 | `SIGNING_KEY` | Hex-encoded private key for the labeler | `a1b2c3...` |
-| `BSKY_IDENTIFIER` | Bluesky handle or email of the labeler account | `hyperlabel.bsky.social` |
+| `BSKY_IDENTIFIER` | Bluesky handle or email of the labeler account | `certified-org-labeler.bsky.social` |
 | `BSKY_PASSWORD` | Bluesky app password (not your account password) | `xxxx-xxxx-xxxx-xxxx` |
-| `LABELER_ENDPOINT` | Public HTTPS URL of this Railway service | `https://hyperlabel-production.up.railway.app` |
+| `LABELER_ENDPOINT` | Public HTTPS URL of this Railway service | `https://certified-organization-labeler-production.up.railway.app` |
 
 ### Required for persistent storage (set after adding volume)
 
@@ -125,7 +125,7 @@ Set these in **Railway → Service → Variables**.
 
 ## Persistent Volume (SQLite)
 
-Hyperlabel uses three SQLite databases. Without a persistent volume, they are reset on every deploy.
+This fork uses three SQLite databases. Without a persistent volume, they are reset on every deploy.
 
 ### Adding the volume
 
@@ -148,7 +148,7 @@ TAP_DB_PATH=/app/data/tap.db
 
 | Database | Contains |
 |----------|----------|
-| `activity-log.db` | All scored hypercert activity records (dashboard data) |
+| `activity-log.db` | All scored certified actor organization records (dashboard data) |
 | `labels.db` | AT Protocol label records (managed by `@skyware/labeler`) |
 | `tap.db` | Tap sidecar cursor + firehose state (determines replay position) |
 

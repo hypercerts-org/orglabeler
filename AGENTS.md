@@ -1,6 +1,6 @@
 # Agent Instructions
 
-This is the **Hyperlabel** — an AT Protocol labeler for scoring hypercert activity quality.
+This is the **Certified Organization Labeler** fork — an AT Protocol labeler for certified actor organizations.
 
 ## Project Structure
 
