@@ -32,21 +32,36 @@ const geistMono = Geist_Mono({
   display: 'swap',
 })
 
+const siteUrl = (() => {
+  const configuredUrl = process.env.NEXT_PUBLIC_SITE_URL
+  if (configuredUrl) {
+    return configuredUrl.startsWith('http://') || configuredUrl.startsWith('https://')
+      ? configuredUrl
+      : `https://${configuredUrl}`
+  }
+
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`
+  }
+
+  return 'http://localhost:3000'
+})()
+
 export const metadata: Metadata = {
-  title: 'OrgLabeler',
+  title: 'Certified Organization Labeler',
   description: 'Label certified organizations on AT Protocol.',
-  metadataBase: new URL('https://orglabeler-production.up.railway.app'),
+  metadataBase: new URL(siteUrl),
   openGraph: {
-    title: 'OrgLabeler',
+    title: 'Certified Organization Labeler',
     description: 'Label certified organizations on AT Protocol.',
-    url: 'https://orglabeler-production.up.railway.app',
-    siteName: 'OrgLabeler',
+    url: '/',
+    siteName: 'Certified Organization Labeler',
     locale: 'en_US',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'OrgLabeler',
+    title: 'Certified Organization Labeler',
     description: 'Label certified organizations on AT Protocol.',
   },
 }

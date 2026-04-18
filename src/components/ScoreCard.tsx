@@ -46,7 +46,7 @@ export function ScoreCard({ entry, defaultExpanded = false }: ScoreCardProps) {
   } catch { /* use empty */ }
 
   const shortDid = entry.did.replace('did:plc:', '').slice(0, 12) + '…'
-  const hyperscanUrl = `https://www.hyperscan.dev/data?did=${encodeURIComponent(entry.did)}&collection=org.hypercerts.claim.activity&rkey=${entry.rkey}`
+  const recordUrl = `/feed?did=${encodeURIComponent(entry.did)}&collection=app.certified.actor.organization&rkey=${entry.rkey}`
   const barColor = TIER_BAR_COLORS[entry.tier]
   const relativeTime = getRelativeTime(entry.labeledAt)
 
@@ -62,7 +62,7 @@ export function ScoreCard({ entry, defaultExpanded = false }: ScoreCardProps) {
       {/* Header row */}
       <div className='flex items-center justify-between px-3 py-2.5'>
         <a
-          href={hyperscanUrl}
+          href={recordUrl}
           target='_blank'
           rel='noopener noreferrer'
           className='font-mono text-[11px] text-muted-foreground hover:text-foreground hover:underline'
@@ -76,7 +76,7 @@ export function ScoreCard({ entry, defaultExpanded = false }: ScoreCardProps) {
       {/* Title row */}
       <div className='px-3 pb-1'>
         <a
-          href={hyperscanUrl}
+          href={recordUrl}
           target='_blank'
           rel='noopener noreferrer'
           className='text-sm font-medium text-foreground truncate hover:text-primary hover:underline inline-flex items-center gap-1 max-w-full'

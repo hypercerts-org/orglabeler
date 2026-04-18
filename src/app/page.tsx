@@ -43,7 +43,7 @@ export default function DashboardPage() {
       {/* Heading section */}
       <div className='mb-2'>
         <h1 className='font-[family-name:var(--font-syne)] text-2xl font-bold lowercase'>
-          hyperlabel
+          certified organization labeler
         </h1>
         <p className='text-sm text-muted-foreground mt-1'>
           Monitoring organization record quality across the network.

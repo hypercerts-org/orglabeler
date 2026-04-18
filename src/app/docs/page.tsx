@@ -35,19 +35,19 @@ const API_ENDPOINTS = [
     method: 'GET',
     path: '/api/stats',
     description: 'Dashboard statistics — total records, tier breakdown, 24h/7d record counts.',
-    curl: `curl https://hyperlabel-production.up.railway.app/api/stats`,
+    curl: `curl https://einstein.climateai.org/api/stats`,
   },
   {
     method: 'GET',
     path: '/api/recent?limit=20&offset=0&tier=all',
-    description: 'Recent organization records with pagination and tier filtering. Valid tier values: all, likely-test, standard, high-quality.',
-    curl: `curl "https://hyperlabel-production.up.railway.app/api/recent?limit=20&offset=0&tier=high-quality"`,
+    description: 'Recent organization records with pagination, tier filtering, AI-only filtering (hf=true), and text search (q=...). Valid tier values: all, likely-test, standard, high-quality.',
+    curl: `curl "https://einstein.climateai.org/api/recent?limit=20&offset=0&tier=high-quality"`,
   },
   {
     method: 'GET',
     path: '/xrpc/com.atproto.label.queryLabels?uriPatterns=at://did:plc:*/app.certified.actor.organization/*',
     description: 'Query AT Protocol labels via the standard labeler endpoint. Use uriPatterns to filter record URIs and sources to scope the label source.',
-    curl: `curl "https://hyperlabel-production.up.railway.app/xrpc/com.atproto.label.queryLabels?uriPatterns=at://did:plc:*/app.certified.actor.organization/*"`,
+    curl: `curl "https://einstein.climateai.org/xrpc/com.atproto.label.queryLabels?uriPatterns=at://did:plc:*/app.certified.actor.organization/*"`,
   },
 ]
 
@@ -59,7 +59,7 @@ export default function DocsPage() {
           Documentation
         </h1>
         <p className='text-sm text-muted-foreground mt-1'>
-          How Hyperlabel scores and labels organization records on AT Protocol.
+          How the certified organization labeler scores and labels organization records on AT Protocol.
         </p>
       </div>
 
@@ -93,7 +93,7 @@ export default function DocsPage() {
           <li className='flex gap-3'>
             <span className='font-[family-name:var(--font-syne)] font-bold text-foreground shrink-0'>1.</span>
             <span>
-              Hyperlabel uses{' '}
+              The certified organization labeler uses{' '}
               <span className='font-mono text-xs bg-secondary rounded px-1 py-0.5'>Tap</span>{' '}
               — Bluesky&apos;s official sync tool — to monitor the AT Protocol network for{' '}
               <span className='font-mono text-xs bg-secondary rounded px-1 py-0.5'>app.certified.actor.organization</span>{' '}
@@ -182,9 +182,9 @@ export default function DocsPage() {
         <div className='border border-border rounded-lg bg-card p-4 text-xs text-muted-foreground space-y-1'>
           <p className='font-medium text-foreground text-xs'>Common patterns</p>
           <ul className='space-y-1 pl-3'>
-            <li>• Common junk values: <span className='font-mono bg-secondary rounded px-1'>test</span>, <span className='font-mono bg-secondary rounded px-1'>asdf</span>, <span className='font-mono bg-secondary rounded px-1'>lorem ipsum</span>, <span className='font-mono bg-secondary rounded px-1'>placeholder</span>, <span className='font-mono bg-secondary rounded px-1'>delete me</span>, <span className='font-mono bg-secondary rounded px-1'>ignore</span>, <span className='font-mono bg-secondary rounded px-1'>todo</span>.</li>
-            <li>• Empty-style values: <span className='font-mono bg-secondary rounded px-1'>n/a</span>, <span className='font-mono bg-secondary rounded px-1'>none</span>, <span className='font-mono bg-secondary rounded px-1'>null</span>, <span className='font-mono bg-secondary rounded px-1'>undefined</span>, <span className='font-mono bg-secondary rounded px-1'>blank</span>.</li>
-            <li>• Repeated characters and numeric-only titles are also treated as test data.</li>
+            <li>• Common junk values: <span className='font-mono bg-secondary rounded px-1'>test</span>, <span className='font-mono bg-secondary rounded px-1'>asdf</span>, <span className='font-mono bg-secondary rounded px-1'>lorem ipsum</span>, <span className='font-mono bg-secondary rounded px-1'>placeholder</span>, <span className='font-mono bg-secondary rounded px-1'>delete me</span>, <span className='font-mono bg-secondary rounded px-1'>ignore</span>, <span className='font-mono bg-secondary rounded px-1'>todo</span>, <span className='font-mono bg-secondary rounded px-1'>foo</span>, <span className='font-mono bg-secondary rounded px-1'>bar</span>, <span className='font-mono bg-secondary rounded px-1'>abc</span>, <span className='font-mono bg-secondary rounded px-1'>wip</span>, <span className='font-mono bg-secondary rounded px-1'>sample</span>, and <span className='font-mono bg-secondary rounded px-1'>example</span>.</li>
+            <li>• Empty-style values: <span className='font-mono bg-secondary rounded px-1'>n/a</span>, <span className='font-mono bg-secondary rounded px-1'>none</span>, <span className='font-mono bg-secondary rounded px-1'>null</span>, <span className='font-mono bg-secondary rounded px-1'>undefined</span>, <span className='font-mono bg-secondary rounded px-1'>blank</span>, <span className='font-mono bg-secondary rounded px-1'>draft</span>, <span className='font-mono bg-secondary rounded px-1'>temp</span>, and <span className='font-mono bg-secondary rounded px-1'>tmp</span>.</li>
+            <li>• Single-word greetings, repeated characters, and numeric-only titles are also treated as test data.</li>
           </ul>
         </div>
       </section>
@@ -242,7 +242,7 @@ export default function DocsPage() {
           API endpoints
         </h2>
         <p className='text-sm text-muted-foreground'>
-          The labeler exposes a small REST API for the dashboard as well as the standard AT Protocol
+          The certified organization labeler exposes a small REST API for the dashboard as well as the standard AT Protocol
           labeler XRPC endpoint.
         </p>
         <div className='space-y-4'>
@@ -268,7 +268,7 @@ export default function DocsPage() {
           AT Protocol integration
         </h2>
         <p className='text-sm text-muted-foreground'>
-          Hyperlabel is a fully compliant AT Protocol labeler. Any app that supports the labeler
+          The certified organization labeler is a fully compliant AT Protocol labeler. Any app that supports the labeler
           protocol can subscribe to or query its labels.
         </p>
         <div className='border border-border rounded-lg bg-card p-4 space-y-3 text-sm'>
