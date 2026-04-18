@@ -2,21 +2,19 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { ActivityFeed } from '@/components/ActivityFeed'
-import type { LabelTier, ActivityLogEntry } from '@/lib/types'
+import type { ActivityLogEntry, RuntimeLabelTier } from '@/lib/types'
 
-const filterOptions: { label: string; value: LabelTier | 'all' }[] = [
+const filterOptions: { label: string; value: RuntimeLabelTier | 'all' }[] = [
   { label: 'All', value: 'all' },
-  { label: '⟳ Pending', value: 'pending' },
-  { label: '✦ High Quality', value: 'high-quality' },
-  { label: '● Standard', value: 'standard' },
-  { label: '◌ Draft', value: 'draft' },
   { label: '⚠ Likely Test', value: 'likely-test' },
+  { label: '● Standard', value: 'standard' },
+  { label: '✦ High Quality', value: 'high-quality' },
 ]
 
 const LIMIT = 20
 
 export default function FeedPage() {
-  const [selectedTier, setSelectedTier] = useState<LabelTier | 'all'>('all')
+  const [selectedTier, setSelectedTier] = useState<RuntimeLabelTier | 'all'>('all')
   const [aiOnly, setAiOnly] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')

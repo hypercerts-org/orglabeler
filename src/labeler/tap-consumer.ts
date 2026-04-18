@@ -7,13 +7,17 @@ import { enqueueClassification, reevaluateExistingClassifications } from '../lib
 import { applyQualityLabel, fetchCurrentLabels } from './server'
 import { extractDescriptionText } from '../lib/lexicon-utils'
 import logger from './logger'
-import type { ActivityRecord } from '../lib/types'
+import type { ActivityRecord, RuntimeLabelTier } from '../lib/types'
 import { $safeParse } from '../lexicons/app/certified/actor/organization.defs'
 
 const tapConfig = TAP_ADMIN_PASSWORD ? { adminPassword: TAP_ADMIN_PASSWORD } : undefined
 const tap = new Tap(TAP_URL, tapConfig)
 
 const indexer = new SimpleIndexer()
+
+function isRuntimeLabelTier(tier: string): tier is RuntimeLabelTier {
+  return tier === 'likely-test' || tier === 'standard' || tier === 'high-quality'
+}
 
 indexer.record(async (evt) => {
   // Only process our collection
@@ -129,14 +133,18 @@ export async function syncLabelsWithDb(): Promise<void> {
   for (const activity of activities) {
     try {
       const currentLabels = await fetchCurrentLabels(activity.uri)
-      const currentQuality = [...currentLabels].filter(l =>
-        ['pending', 'high-quality', 'standard', 'draft', 'likely-test'].includes(l)
-      )
+      const currentQuality = [...currentLabels].filter(isRuntimeLabelTier)
+
+      if (!isRuntimeLabelTier(activity.tier)) {
+        continue
+      }
+
+      const dbTier = activity.tier as RuntimeLabelTier
 
       // If the ATProto label doesn't match the DB tier, update it
-      if (!currentQuality.includes(activity.tier)) {
-        logger.info({ uri: activity.uri, dbTier: activity.tier, atprotoLabels: currentQuality }, 'Syncing mismatched label')
-        await applyQualityLabel(activity.uri, activity.tier)
+      if (!currentQuality.includes(dbTier)) {
+        logger.info({ uri: activity.uri, dbTier, atprotoLabels: currentQuality }, 'Syncing mismatched label')
+        await applyQualityLabel(activity.uri, dbTier)
         synced++
       }
     } catch (err) {

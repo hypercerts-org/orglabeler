@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3'
 import { ACTIVITY_DB_PATH } from './config'
-import type { ActivityLogEntry, LabelStats, LabelTier } from './types'
+import type { ActivityLogEntry, LabelStats, LabelTier, RuntimeLabelTier } from './types'
 
 export interface HfClassificationData {
   hfLabel: string | null
@@ -18,7 +18,7 @@ function createActivitiesTable(db: Database.Database): void {
       uri TEXT NOT NULL,
       title TEXT NOT NULL,
       score INTEGER NOT NULL,
-      tier TEXT NOT NULL CHECK(tier IN ('pending', 'high-quality', 'standard', 'draft', 'likely-test')),
+      tier TEXT NOT NULL CHECK(tier IN ('likely-test', 'standard', 'high-quality')),
       breakdown TEXT NOT NULL,
       test_signals TEXT NOT NULL DEFAULT '[]',
       labeled_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -42,19 +42,24 @@ export function getDb(): Database.Database {
 
   createActivitiesTable(_db)
 
-  // Migration: check if 'pending' tier is accepted by the existing CHECK constraint.
-  // Fix 1: Use INSERT OR IGNORE so a duplicate sentinel row does NOT trigger DROP TABLE.
-  // Fix 2: Wrap the old-schema migration path in a transaction for atomicity.
+  // Migration: recreate tables whose tier CHECK constraint predates the active 3-tier set.
   try {
-    const result = _db.prepare(
-      "INSERT OR IGNORE INTO activities (did, rkey, uri, title, score, tier, breakdown, test_signals) VALUES ('__migration_test', '__test', '__test', '__test', 0, 'pending', '{}', '[]')"
-    ).run()
-    // If the insert was ignored (row existed), that still means 'pending' is in the schema
-    if (result.changes > 0) {
-      _db.exec("DELETE FROM activities WHERE did = '__migration_test'")
+    const row = _db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'activities'").get() as { sql?: string } | undefined
+    const expectedCheck = "CHECK(tier IN ('likely-test', 'standard', 'high-quality'))"
+    if (!row?.sql?.includes(expectedCheck)) {
+      // Old schema — recreate atomically so new writes only allow active runtime tiers.
+      _db.exec('BEGIN')
+      try {
+        _db.exec('DROP TABLE IF EXISTS activities')
+        createActivitiesTable(_db)
+        _db.exec('COMMIT')
+      } catch (err) {
+        _db.exec('ROLLBACK')
+        throw err
+      }
     }
   } catch {
-    // Old schema that doesn't accept 'pending' tier — recreate atomically
+    // If schema introspection fails, fall back to a clean rebuild.
     _db.exec('BEGIN')
     try {
       _db.exec('DROP TABLE IF EXISTS activities')
@@ -153,9 +158,9 @@ export function getRecentActivities(limit = 20, offset = 0): ActivityLogEntry[] 
   return rows.map(rowToEntry)
 }
 
-// Get activities filtered by tier. Sorted by labeled_at DESC.
+// Get activities filtered by active tier. Sorted by labeled_at DESC.
 // Fix 5: Clamp limit/offset to safe values to prevent negative or NaN inputs.
-export function getActivitiesByTier(tier: LabelTier, limit = 20, offset = 0): ActivityLogEntry[] {
+export function getActivitiesByTier(tier: RuntimeLabelTier, limit = 20, offset = 0): ActivityLogEntry[] {
   const db = getDb()
   const safeLimit = Math.max(1, Math.min(limit || 20, 100))
   const safeOffset = Math.max(0, offset || 0)
@@ -170,8 +175,8 @@ export function getActivitiesByTier(tier: LabelTier, limit = 20, offset = 0): Ac
   return rows.map(rowToEntry)
 }
 
-// Get total count (optionally filtered by tier)
-export function getTotalCount(tier?: LabelTier): number {
+// Get total count (optionally filtered by active tier)
+export function getTotalCount(tier?: RuntimeLabelTier): number {
   const db = getDb()
   if (tier) {
     const row = db.prepare('SELECT COUNT(*) as count FROM activities WHERE tier = ?').get(tier) as { count: number }
@@ -189,10 +194,8 @@ export function getStats(): LabelStats {
   const row = db.prepare(`
     SELECT
       COUNT(*) as total,
-      SUM(CASE WHEN tier = 'pending' THEN 1 ELSE 0 END) as pending,
       SUM(CASE WHEN tier = 'high-quality' THEN 1 ELSE 0 END) as high_quality,
       SUM(CASE WHEN tier = 'standard' THEN 1 ELSE 0 END) as standard,
-      SUM(CASE WHEN tier = 'draft' THEN 1 ELSE 0 END) as draft,
       SUM(CASE WHEN tier = 'likely-test' THEN 1 ELSE 0 END) as likely_test,
       SUM(CASE WHEN labeled_at > strftime('%Y-%m-%dT%H:%M:%S', 'now', '-1 day') THEN 1 ELSE 0 END) as last_24h,
       SUM(CASE WHEN labeled_at > strftime('%Y-%m-%dT%H:%M:%S', 'now', '-7 days') THEN 1 ELSE 0 END) as last_7d,
@@ -204,10 +207,8 @@ export function getStats(): LabelStats {
   return {
     total: row['total'] ?? 0,
     byTier: {
-      'pending': row['pending'] ?? 0,
       'high-quality': row['high_quality'] ?? 0,
       'standard': row['standard'] ?? 0,
-      'draft': row['draft'] ?? 0,
       'likely-test': row['likely_test'] ?? 0,
     },
     last24h: row['last_24h'] ?? 0,
@@ -220,12 +221,12 @@ export function getStats(): LabelStats {
   }
 }
 
-// Get all activities with tier = 'pending' (stale records from deploy race conditions)
+// Legacy startup cleanup for rows that predate the active 3-tier set.
 export function getPendingActivities(): ActivityLogEntry[] {
   const db = getDb()
   const rows = db.prepare(
-    'SELECT id, did, rkey, uri, title, score, tier, breakdown, test_signals, labeled_at, hf_label, hf_score FROM activities WHERE tier = ?'
-  ).all('pending') as Array<Record<string, unknown>>
+    'SELECT id, did, rkey, uri, title, score, tier, breakdown, test_signals, labeled_at, hf_label, hf_score FROM activities WHERE tier NOT IN (?, ?, ?)'
+  ).all('likely-test', 'standard', 'high-quality') as Array<Record<string, unknown>>
   return rows.map(rowToEntry)
 }
 

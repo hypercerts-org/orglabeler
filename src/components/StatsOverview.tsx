@@ -1,13 +1,13 @@
 'use client'
 
-import type { LabelStats, LabelTier } from '@/lib/types'
+import type { LabelStats, RuntimeLabelTier } from '@/lib/types'
 import { ScoreBadge } from './ScoreBadge'
 
 interface StatsOverviewProps {
   stats: LabelStats
 }
 
-const QUALITY_TIERS: LabelTier[] = ['pending', 'high-quality', 'standard', 'draft', 'likely-test']
+const QUALITY_TIERS: RuntimeLabelTier[] = ['likely-test', 'standard', 'high-quality']
 
 export function StatsOverview({ stats }: StatsOverviewProps) {
   return (

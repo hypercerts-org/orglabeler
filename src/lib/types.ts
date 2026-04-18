@@ -14,7 +14,13 @@ export type ActivityRecord = OrganizationRecordBase & {
 }
 
 // Scoring
-export type LabelTier = 'pending' | 'high-quality' | 'standard' | 'draft' | 'likely-test'
+// Active runtime tiers only. Legacy tiers are retained separately for stored rows and migration cleanup.
+export type RuntimeLabelTier = 'likely-test' | 'standard' | 'high-quality'
+
+// Legacy compatibility only — do not use for new runtime surfaces.
+export type LegacyLabelTier = 'pending' | 'draft'
+
+export type LabelTier = RuntimeLabelTier | LegacyLabelTier
 
 export interface ScoreResult {
   totalScore: number       // 0-100 normalized
@@ -67,7 +73,7 @@ export interface ActivityLogEntry {
 // Stats
 export interface LabelStats {
   total: number
-  byTier: Record<LabelTier, number>
+  byTier: Record<RuntimeLabelTier, number>
   last24h: number
   last7d: number
   hfCoverage: { classified: number; pending: number; total: number }

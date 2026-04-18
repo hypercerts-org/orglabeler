@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
 import { getRecentActivities, getActivitiesByTier, getTotalCount, getAiEvaluatedActivities, getAiEvaluatedCount, searchActivities, searchActivitiesCount } from '@/lib/db'
-import type { LabelTier, ActivityLogEntry } from '@/lib/types'
+import type { ActivityLogEntry, RuntimeLabelTier } from '@/lib/types'
 
-const VALID_TIERS: LabelTier[] = ['pending', 'high-quality', 'standard', 'draft', 'likely-test']
+const VALID_TIERS: RuntimeLabelTier[] = ['likely-test', 'standard', 'high-quality']
 
 export async function GET(request: Request) {
   try {
@@ -13,13 +13,13 @@ export async function GET(request: Request) {
     const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(rawLimit, 100)) : 20
     const offset = Number.isFinite(rawOffset) ? Math.max(0, rawOffset) : 0
 
-    const tierParam = searchParams.get('tier') as LabelTier | 'all' | null
+    const tierParam = searchParams.get('tier') as RuntimeLabelTier | 'all' | null
     const hfOnly = searchParams.get('hf') === 'true'
     const searchQuery = searchParams.get('q')?.trim() || ''
 
-    // Validate tier — if invalid (not one of the 4 tiers or "all"), treat as "all"
-    const isValidTier = tierParam && tierParam !== 'all' && VALID_TIERS.includes(tierParam as LabelTier)
-    const tier = isValidTier ? (tierParam as LabelTier) : null
+    // Validate tier — if invalid (not one of the active tiers or "all"), treat as "all"
+    const isValidTier = tierParam && tierParam !== 'all' && VALID_TIERS.includes(tierParam as RuntimeLabelTier)
+    const tier = isValidTier ? (tierParam as RuntimeLabelTier) : null
 
     let activities: ActivityLogEntry[]
     let total: number
