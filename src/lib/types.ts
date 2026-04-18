@@ -5,21 +5,12 @@ import type { Main as LinearDocument } from '../lexicons/pub/leaflet/pages/linea
 // The canonical shape is defined in lexicons/app/certified/actor/organization.json
 export type { Main as OrganizationRecord } from '../lexicons/app/certified/actor/organization.defs'
 
-// Backwards-compatible ingestion shape used by scoring code until that pipeline is migrated.
+// Legacy alias retained for typed callers while the ingestion pipeline finishes migrating.
+// tap-consumer still normalizes a display title before scoring, so keep that one field here.
 export type ActivityRecord = OrganizationRecordBase & {
   title?: string
   shortDescription?: string
   description?: LinearDocument
-  image?: unknown
-  workScope?: unknown
-  contributors?: Array<{
-    contributionWeight?: string
-    contributionDetails?: unknown
-  }>
-  locations?: unknown[]
-  startDate?: string
-  endDate?: string
-  rights?: unknown
 }
 
 // Scoring
@@ -33,16 +24,23 @@ export interface ScoreResult {
 }
 
 export interface ScoreBreakdown {
-  titleQuality: number       // 0-15
-  shortDescQuality: number   // 0-15
-  descriptionQuality: number // 0-20
-  hasImage: number           // 0-10
-  hasWorkScope: number       // 0-10
-  contributorQuality: number // 0-15
-  hasLocations: number       // 0-5
-  hasDateRange: number       // 0-5
-  hasRights: number          // 0-5
-  repetitionFlags: number    // 0 = clean, negative penalty (-5 per signal, min -15)
+  organizationType: number
+  urls: number
+  location: number
+  foundedDate: number
+  createdAt: number
+
+  // Legacy compatibility aliases for the existing dashboard breakdown view.
+  titleQuality: number
+  shortDescQuality: number
+  descriptionQuality: number
+  hasImage: number
+  hasWorkScope: number
+  contributorQuality: number
+  hasLocations: number
+  hasDateRange: number
+  hasRights: number
+  repetitionFlags: number
 }
 
 export interface LabelDefinition {
