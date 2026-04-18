@@ -110,10 +110,10 @@ export default function FeedPage() {
       {/* Heading */}
       <div>
         <h1 className='font-[family-name:var(--font-syne)] text-2xl font-bold'>
-          Activity Feed
+          Organization Records Feed
         </h1>
         <p className='text-sm text-muted-foreground mt-1'>
-          All detected hypercert activity records.
+          All detected organization records.
         </p>
       </div>
 
@@ -154,7 +154,7 @@ export default function FeedPage() {
           🤖 AI Evaluated
         </button>
         <span className='text-[11px] text-muted-foreground'>
-          {total} activities
+          {total} records
         </span>
       </div>
 

@@ -46,7 +46,7 @@ export default function DashboardPage() {
           hyperlabel
         </h1>
         <p className='text-sm text-muted-foreground mt-1'>
-          Monitoring hypercert activity quality across the hypersphere.
+          Monitoring organization record quality across the network.
         </p>
       </div>
 
@@ -67,9 +67,9 @@ export default function DashboardPage() {
       {/* Empty state when no activities */}
       {!loading && stats && stats.total === 0 && (
         <div className='text-center py-12 text-muted-foreground text-sm italic'>
-          <p>No activities scored yet.</p>
+          <p>No organization records scored yet.</p>
           <p>
-            The labeler process will analyze new org.hypercerts.claim.activity records as they
+            The labeler process will analyze new app.certified.actor.organization records as they
             appear on the network.
           </p>
         </div>
@@ -90,7 +90,7 @@ export default function DashboardPage() {
       <div>
         <div className='flex items-center justify-between mb-3'>
           <h2 className='font-[family-name:var(--font-syne)] text-lg font-bold'>
-            Recent Activity
+            Recent Records
           </h2>
           <Link
             href='/feed'
