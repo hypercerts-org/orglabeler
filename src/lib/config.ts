@@ -10,12 +10,11 @@ export const BSKY_PASSWORD = process.env.BSKY_PASSWORD ?? ''
 export const ACTIVITY_COLLECTION = 'app.certified.actor.organization'
 export const ACTIVITY_DB_PATH = process.env.ACTIVITY_DB_PATH ?? 'activity-log.db'
 export const LABELS_DB_PATH = process.env.LABELS_DB_PATH ?? 'labels.db'
+export const APP_DB_PATHS = [ACTIVITY_DB_PATH, LABELS_DB_PATH] as const
 export const LABELER_ENDPOINT = process.env.LABELER_ENDPOINT ?? ''
-export const PDS_URL = process.env.PDS_URL ?? ""
-export const TAP_URL = process.env.TAP_URL ?? 'http://localhost:2480'
+export const PDS_URL = process.env.PDS_URL ?? ''
+export const TAP_URL = process.env.TAP_URL ?? ''
 export const TAP_ADMIN_PASSWORD = process.env.TAP_ADMIN_PASSWORD ?? ''
-export const TAP_BIND = process.env.TAP_BIND ?? ':2480'
-export const TAP_DB_PATH = process.env.TAP_DB_PATH ?? 'tap.db'
 export const HF_TOKEN = process.env.HF_TOKEN ?? ''
 export const HF_MODEL = 'facebook/bart-large-mnli'
 
@@ -23,9 +22,12 @@ export function validateLabelerConfig(): void {
   const required: [string, string][] = [
     ['DID', DID],
     ['SIGNING_KEY', SIGNING_KEY],
+    ['TAP_URL', TAP_URL],
   ]
   const missing = required.filter(([, val]) => !val).map(([name]) => name)
   if (missing.length > 0) {
-    throw new Error(`Missing required environment variables: ${missing.join(', ')}. Check your .env file.`)
+    throw new Error(
+      `Missing required environment variables: ${missing.join(', ')}. TAP_URL must point to the external Tap service; there is no localhost default. Check your .env file.`,
+    )
   }
 }

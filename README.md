@@ -43,35 +43,25 @@ The setup script will:
 ### Run
 
 ```bash
-# Start both dashboard and labeler
-npm run dev:all
+# Start the app service (dashboard + labeler)
+npm run dev:service
 
 # Or start separately:
 npm run dev            # Dashboard on http://localhost:3000
 npm run dev:labeler    # Labeler backend on port 4100 + metrics on 4101
 ```
 
+Tap runs as a separate service. Point `TAP_URL` at that service's URL; there is no localhost fallback and the app will not start without it.
+
 ## Architecture
 
-```
-┌─────────────────┐    ┌──────────────────┐    ┌──────────────────┐
-│  AT Protocol    │    │  Tap Sidecar     │    │  Next.js         │
-│  Relay          │───▶│  (port 2480)     │    │  Dashboard       │
-│  (firehose)     │    │  Backfill + Live │    │  (port 3000)     │
-└─────────────────┘    └────────┬─────────┘    │                  │
-                                 │              │  Reads from      │
-                        ┌────────▼─────────┐    │  activity-log.db │
-                        │  Labeler Process  │    └────────┬─────────┘
-                        │  (port 4100)     │             │
-                        │  Score → Label   │      ┌──────▼───────┐
-                        │  → Log to SQLite │      │activity-log.db│
-                        └────────┬─────────┘      │ (dashboard)  │
-                                 │                └──────────────┘
-                          ┌──────▼───────┐
-                          │ labels.db    │
-                          │ (AT Proto)   │
-                          └──────────────┘
-```
+The runtime is split into three pieces:
+
+- AT Protocol relay → separate Tap service
+- Tap service → labeler process over `TAP_URL`
+- Labeler process → `labels.db` + `activity-log.db`
+
+The Next.js dashboard reads from `activity-log.db`.
 
 The labeler auto-detects the PDS for non-bsky.social accounts via DID document resolution, so it works across any AT Protocol PDS.
 
@@ -95,7 +85,8 @@ Test detection: regex patterns catch common placeholder strings (`test`, `asdf`,
 |--------|-------------|
 | `npm run dev` | Start Next.js dashboard |
 | `npm run dev:labeler` | Start labeler backend |
-| `npm run dev:all` | Start both concurrently |
+| `npm run dev:service` | Start dashboard + labeler concurrently |
+| `npm run start:service` | Start the production app service processes |
 | `npm run setup` | Initialize labeler account |
 | `npm run set-labels` | Push/update label definitions |
 | `npm run build` | Production build |
@@ -114,13 +105,14 @@ Test detection: regex patterns catch common placeholder strings (`test`, `asdf`,
 | `HOST` | 127.0.0.1 | Labeler server bind address |
 | `LABELER_PORT` | 4100 | Labeler server port |
 | `METRICS_PORT` | 4101 | Prometheus metrics port |
-| `TAP_URL` | http://localhost:2480 | Tap sidecar HTTP URL |
-| `TAP_ADMIN_PASSWORD` | (empty) | Tap admin auth password |
-| `TAP_BIND` | `:2480` | Tap server bind address |
-| `TAP_DB_PATH` | `tap.db` | Tap SQLite database path |
+| `TAP_URL` | required | URL of the separate Tap service (no localhost default) |
 | `ACTIVITY_DB_PATH` | `activity-log.db` | Activity log database path |
 
+Tap-specific settings such as its database path and bind address belong on the Tap service, not the app service.
+
 ## Production Deployment
+
+Deploy the app service and Tap as separate services. The app service runs the dashboard plus labeler backend and connects to Tap over `TAP_URL`; Tap owns its own database, volume, and lifecycle.
 
 The labeler backend (port 4100) must be accessible via HTTPS for AT Protocol clients. Use a reverse proxy:
 
@@ -141,5 +133,5 @@ server {
 - **Runtime:** Node.js 22
 - **Framework:** Next.js 16, React 19, TypeScript
 - **Styling:** Tailwind CSS v4, OKLCH colors
-- **Labeler:** @skyware/labeler, @atproto/tap, indigo/tap
+- **Labeler:** @skyware/labeler, @atproto/tap
 - **Database:** SQLite (better-sqlite3)
