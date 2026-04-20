@@ -4,6 +4,9 @@ type RuntimeQualityTier = 'likely-test' | 'standard' | 'high-quality'
 
 export const AUTHENTICITY_FAILURE_TIER: RuntimeQualityTier = 'likely-test'
 
+// Shared time unit for score boundaries.
+export const MS_PER_DAY = 24 * 60 * 60 * 1000
+
 export const LABELS: LabelDefinition[] = [
   {
     identifier: 'likely-test',
@@ -19,12 +22,6 @@ export const LABELS: LabelDefinition[] = [
   },
 ]
 
-export const SCORE_THRESHOLDS: Record<RuntimeQualityTier, { min: number; max: number }> = {
-  'likely-test': { min: 0, max: 34 },
-  standard: { min: 35, max: 74 },
-  'high-quality': { min: 75, max: 100 },
-}
-
 export const COMPLETENESS_WEIGHTS = {
   displayName: 15,
   description: 15,
@@ -39,6 +36,23 @@ export const COMPLETENESS_WEIGHTS = {
   foundedDateAge: 5,
   avatar: 5,
   banner: 5,
+} as const
+
+// Final score bands are intentionally coarse and should stay readable here:
+// 0-34 => likely-test, 35-74 => standard, 75-100 => high-quality.
+export const SCORE_THRESHOLDS: Record<RuntimeQualityTier, { min: number; max: number }> = {
+  'likely-test': { min: 0, max: 34 },
+  standard: { min: 35, max: 74 },
+  'high-quality': { min: 75, max: 100 },
+}
+
+// Founded-date age scoring is binary: the 5-point bonus applies once the
+// organization has existed for at least one year.
+export const FOUNDED_DATE_AGE_BUCKETS = {
+  oneYearOrOlder: {
+    minAgeMs: 365 * MS_PER_DAY,
+    score: COMPLETENESS_WEIGHTS.foundedDateAge,
+  },
 } as const
 
 export const COMPLETENESS_WEIGHT_TOTAL = 100

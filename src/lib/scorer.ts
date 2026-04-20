@@ -1,13 +1,10 @@
 import type { LabelTier, ScoreBreakdown, ScoreResult } from './types'
 import type { MergedScoringInput } from './scoring-input'
-import { AUTHENTICITY_FAILURE_TIER, COMPLETENESS_WEIGHTS, SCORE_THRESHOLDS } from './constants'
+import { AUTHENTICITY_FAILURE_TIER, COMPLETENESS_WEIGHTS, FOUNDED_DATE_AGE_BUCKETS, SCORE_THRESHOLDS } from './constants'
 import { resolvePublicUrl } from './link-resolver'
 import { evaluateMergedActorAuthenticity } from './scoring-authenticity'
 import { validateOrganizationLocationRef } from './location-utils'
 import { displayNameMatchesWebsiteDomain, normalizePublicWebsiteUrl } from './website-utils'
-
-const HIGH_QUALITY_THRESHOLD = SCORE_THRESHOLDS['high-quality'].min
-const STANDARD_THRESHOLD = SCORE_THRESHOLDS.standard.min
 
 const ZERO_BREAKDOWN: ScoreBreakdown = {
   displayName: 0,
@@ -106,7 +103,9 @@ function scoreFoundedDateAge(value: string | null, now: number): number {
   if (timestamp > now) return 0
 
   const ageMs = now - timestamp
-  return ageMs >= 365 * 24 * 60 * 60 * 1000 ? COMPLETENESS_WEIGHTS.foundedDateAge : 0
+  const bucket = FOUNDED_DATE_AGE_BUCKETS.oneYearOrOlder
+
+  return ageMs >= bucket.minAgeMs ? bucket.score : 0
 }
 
 function scoreAvatar(hasAvatar: boolean): number {
@@ -173,10 +172,9 @@ export async function scoreActivity(record: MergedScoringInput): Promise<ScoreRe
   }
 }
 
-export function tierForScore(score: number, testSignals: string[] = []): LabelTier {
-  if (testSignals.length > 0) return 'likely-test'
-  if (score >= HIGH_QUALITY_THRESHOLD) return 'high-quality'
-  if (score >= STANDARD_THRESHOLD) return 'standard'
+export function tierForScore(score: number, _testSignals: string[] = []): LabelTier {
+  if (score >= SCORE_THRESHOLDS['high-quality'].min) return 'high-quality'
+  if (score >= SCORE_THRESHOLDS.standard.min) return 'standard'
   return 'likely-test'
 }
 
