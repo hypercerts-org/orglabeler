@@ -98,39 +98,38 @@ export async function recomputeLabeledOrganizationRow(did: string): Promise<void
     organization: organization.payload,
   })
 
-  let result
   try {
-    result = scoreActivity(scoringInput)
+    const result = await scoreActivity(scoringInput)
+
+    try {
+      logActivity({
+        did,
+        rkey: organization.rkey,
+        uri: organization.recordUri,
+        title: merged.displayName,
+        score: result.totalScore,
+        tier: result.tier,
+        breakdown: JSON.stringify(result.breakdown),
+        testSignals: JSON.stringify(result.testSignals),
+        labeledAt: new Date().toISOString(),
+      })
+      logger.info(
+        { did, rkey: organization.rkey, score: result.totalScore, tier: result.tier },
+        `Scored merged organization row: ${result.totalScore}/100 → ${result.tier}`
+      )
+    } catch (err) {
+      logger.error({ err, did, rkey: organization.rkey }, 'Error logging organization row')
+      return
+    }
+
+    try {
+      await applyQualityLabel(organization.recordUri, result.tier)
+    } catch (err) {
+      logger.error({ err, uri: organization.recordUri, did }, 'Error applying organization label (score still saved)')
+    }
   } catch (err) {
     logger.error({ err, did, rkey: organization.rkey }, 'Error scoring organization snapshot')
     return
-  }
-
-  try {
-    logActivity({
-      did,
-      rkey: organization.rkey,
-      uri: organization.recordUri,
-      title: merged.displayName,
-      score: result.totalScore,
-      tier: result.tier,
-      breakdown: JSON.stringify(result.breakdown),
-      testSignals: JSON.stringify(result.testSignals),
-      labeledAt: new Date().toISOString(),
-    })
-    logger.info(
-      { did, rkey: organization.rkey, score: result.totalScore, tier: result.tier },
-      `Scored merged organization row: ${result.totalScore}/100 → ${result.tier}`
-    )
-  } catch (err) {
-    logger.error({ err, did, rkey: organization.rkey }, 'Error logging organization row')
-    return
-  }
-
-  try {
-    await applyQualityLabel(organization.recordUri, result.tier)
-  } catch (err) {
-    logger.error({ err, uri: organization.recordUri, did }, 'Error applying organization label (score still saved)')
   }
 }
 
