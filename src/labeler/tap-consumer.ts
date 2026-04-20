@@ -32,6 +32,7 @@ const tap = new Tap(TAP_URL, tapConfig)
 
 const PROFILE_COLLECTION = 'app.certified.actor.profile'
 const ORGANIZATION_COLLECTION = ACTIVITY_COLLECTION
+const TARGET_COLLECTIONS = [PROFILE_COLLECTION, ORGANIZATION_COLLECTION]
 
 const indexer = new SimpleIndexer()
 
@@ -190,24 +191,30 @@ async function handleProfileDelete(did: string): Promise<void> {
 }
 
 indexer.record(async (evt) => {
+  const eventMeta = {
+    collection: evt.collection,
+    action: evt.action,
+    did: evt.did,
+    rkey: evt.rkey,
+  }
+
+  logger.info(eventMeta, 'Tap event received before routing')
+
   if (evt.collection === PROFILE_COLLECTION) {
     if (evt.action === 'delete') {
       await handleProfileDelete(evt.did)
-      logger.debug({ did: evt.did, rkey: evt.rkey }, 'Handled profile delete event')
+      logger.info(eventMeta, 'Processed profile delete event')
       return
     }
 
     if (!evt.record) {
-      logger.warn({ did: evt.did, rkey: evt.rkey, action: evt.action }, 'Skipping profile event with missing record payload')
+      logger.warn(eventMeta, 'Skipping profile event with missing record payload')
       return
     }
 
     const parsed = $safeParseProfile(evt.record)
     if (!parsed.success) {
-      logger.warn(
-        { did: evt.did, rkey: evt.rkey, reason: parsed.reason?.message },
-        'Profile record failed lexicon validation — skipping',
-      )
+      logger.warn({ ...eventMeta, reason: parsed.reason?.message }, 'Profile record failed lexicon validation — skipping')
       return
     }
 
@@ -219,35 +226,37 @@ indexer.record(async (evt) => {
       updatedAt: new Date().toISOString(),
     })
 
+    logger.info(eventMeta, 'Stored validated profile snapshot')
+
     if (getOrganizationSnapshot(evt.did)) {
+      logger.info(eventMeta, 'Profile update triggered organization recompute')
       await recomputeLabeledOrganizationRow(evt.did)
       refreshHfClassification(evt.did)
     }
 
-    logger.debug({ did: evt.did, rkey: evt.rkey }, 'Stored profile snapshot')
     return
   }
 
-  if (evt.collection !== ORGANIZATION_COLLECTION) return
+  if (evt.collection !== ORGANIZATION_COLLECTION) {
+    logger.info(eventMeta, 'Ignoring non-target Tap collection')
+    return
+  }
 
   if (evt.action === 'delete') {
     await handleOrganizationDelete(evt.did, evt.rkey)
-    logger.debug({ did: evt.did, rkey: evt.rkey }, 'Handled organization delete event')
+    logger.info(eventMeta, 'Processed organization delete event')
     return
   }
 
   if (!evt.record) {
-    logger.warn({ did: evt.did, rkey: evt.rkey, action: evt.action }, 'Skipping organization event with missing record payload')
+    logger.warn(eventMeta, 'Skipping organization event with missing record payload')
     return
   }
 
   // Validate against the app.certified.actor.organization lexicon
   const parsed = $safeParse(evt.record)
   if (!parsed.success) {
-    logger.warn(
-      { did: evt.did, rkey: evt.rkey, reason: parsed.reason?.message },
-      'Record failed lexicon validation — skipping',
-    )
+    logger.warn({ ...eventMeta, reason: parsed.reason?.message }, 'Organization record failed lexicon validation — skipping')
     return
   }
   const record = parsed.value as ActivityRecord
@@ -258,6 +267,8 @@ indexer.record(async (evt) => {
     payload: record,
     updatedAt: new Date().toISOString(),
   })
+
+  logger.info(eventMeta, 'Stored validated organization snapshot; recomputing score')
 
   await recomputeLabeledOrganizationRow(evt.did)
   refreshHfClassification(evt.did)
@@ -322,12 +333,14 @@ export async function syncLabelsWithDb(): Promise<void> {
 }
 
 export function startTapConsumer(): { channel: TapChannel; destroy: () => Promise<void> } {
+  logger.info({ collections: TARGET_COLLECTIONS }, 'Starting Tap consumer for target collections')
   const channel = tap.channel(indexer)
   // channel.start() returns a promise that resolves when destroyed - do NOT await it
   channel.start().catch((err) => {
     logger.error({ err }, 'Tap channel fatal error — exiting')
     process.exit(1)
   })
+  logger.info({ collections: TARGET_COLLECTIONS }, 'Tap consumer started and waiting for events')
   return {
     channel,
     destroy: () => channel.destroy(),
