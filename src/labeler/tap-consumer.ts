@@ -23,8 +23,9 @@ import { enqueueClassification, reevaluateExistingClassifications } from '../lib
 import { applyQualityLabel, fetchCurrentLabels, negateQualityLabels } from './server'
 import { getMergedActorDisplay } from '../lib/actor-display'
 import { buildMergedScoringInput } from '../lib/scoring-input'
+import { salvageProfileFallback } from '../lib/profile-fallback'
 import logger from './logger'
-import type { ActivityRecord, RuntimeLabelTier } from '../lib/types'
+import type { ActivityRecord, ProfileSnapshot, RuntimeLabelTier } from '../lib/types'
 import { $safeParse as $safeParseProfile } from '../lexicons/app/certified/actor/profile.defs'
 import { $safeParse } from '../lexicons/app/certified/actor/organization.defs'
 
@@ -218,20 +219,40 @@ indexer.record(async (evt) => {
     }
 
     const parsed = $safeParseProfile(evt.record)
-    if (!parsed.success) {
-      logger.warn({ ...eventMeta, reason: parsed.reason?.message }, 'Profile record failed lexicon validation — skipping')
-      return
+    if (parsed.success) {
+      upsertProfileSnapshot({
+        did: evt.did,
+        recordUri: `at://${evt.did}/${PROFILE_COLLECTION}/${evt.rkey}`,
+        rkey: evt.rkey,
+        payload: parsed.value,
+        validationNotes: [],
+        updatedAt: new Date().toISOString(),
+      })
+
+      logger.info(eventMeta, 'Stored validated profile snapshot')
+    } else {
+      logger.warn({ ...eventMeta, reason: parsed.reason?.message }, 'Profile record failed strict lexicon validation; attempting fallback')
+
+      const fallback = salvageProfileFallback(evt.record)
+      if (fallback.mode === 'unusable') {
+        logger.warn(
+          { ...eventMeta, reason: parsed.reason?.message, validationNotes: fallback.validationNotes },
+          'Profile record was unusable after fallback — skipping',
+        )
+        return
+      }
+
+      upsertProfileSnapshot({
+        did: evt.did,
+        recordUri: `at://${evt.did}/${PROFILE_COLLECTION}/${evt.rkey}`,
+        rkey: evt.rkey,
+        payload: fallback.profile as ProfileSnapshot['payload'],
+        validationNotes: fallback.validationNotes,
+        updatedAt: new Date().toISOString(),
+      })
+
+      logger.info({ ...eventMeta, validationNotes: fallback.validationNotes }, 'Stored fallback profile snapshot')
     }
-
-    upsertProfileSnapshot({
-      did: evt.did,
-      recordUri: `at://${evt.did}/${PROFILE_COLLECTION}/${evt.rkey}`,
-      rkey: evt.rkey,
-      payload: parsed.value,
-      updatedAt: new Date().toISOString(),
-    })
-
-    logger.info(eventMeta, 'Stored validated profile snapshot')
 
     if (getOrganizationSnapshot(evt.did)) {
       logger.info(eventMeta, 'Profile update triggered organization recompute')

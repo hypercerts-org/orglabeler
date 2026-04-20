@@ -22,6 +22,7 @@ type SnapshotInput<TPayload> = {
   rkey: string
   payload: TPayload
   updatedAt?: string
+  validationNotes?: string[]
 }
 
 interface SnapshotRecord<TPayload> {
@@ -30,6 +31,7 @@ interface SnapshotRecord<TPayload> {
   rkey: string
   payload: TPayload
   updatedAt: string
+  validationNotes?: string[]
 }
 
 interface SnapshotRow {
@@ -38,6 +40,7 @@ interface SnapshotRow {
   rkey: string
   payload: string
   updated_at: string
+  validation_notes?: string | null
 }
 
 interface PendingOrganizationDeleteRow {
@@ -61,10 +64,13 @@ type ActivityLogInput = {
   tier: LabelTier
   breakdown: string
   testSignals: string
+  validationNotes?: string[]
   labeledAt: string
   hfLabel?: string | null
   hfScore?: number | null
 }
+
+const ACTIVITY_SELECT_COLUMNS = `id, did, rkey, uri, title AS displayName, score, tier, breakdown, test_signals, validation_notes, labeled_at, hf_label, hf_score`
 
 let _db: Database.Database | null = null
 
@@ -80,6 +86,7 @@ function createActivitiesTable(db: Database.Database): void {
       tier TEXT NOT NULL CHECK(tier IN ('likely-test', 'standard', 'high-quality')),
       breakdown TEXT NOT NULL,
       test_signals TEXT NOT NULL DEFAULT '[]',
+      validation_notes TEXT NOT NULL DEFAULT '[]',
       labeled_at TEXT NOT NULL DEFAULT (datetime('now')),
       hf_label TEXT,
       hf_score REAL,
@@ -99,6 +106,7 @@ function createSnapshotTables(db: Database.Database): void {
       record_uri TEXT NOT NULL,
       rkey TEXT NOT NULL,
       payload TEXT NOT NULL,
+      validation_notes TEXT NOT NULL DEFAULT '[]',
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
@@ -176,6 +184,14 @@ export function getDb(): Database.Database {
   if (!cols.includes('hf_score')) {
     _db.exec('ALTER TABLE activities ADD COLUMN hf_score REAL')
   }
+  if (!cols.includes('validation_notes')) {
+    _db.exec("ALTER TABLE activities ADD COLUMN validation_notes TEXT NOT NULL DEFAULT '[]'")
+  }
+
+  const profileCols = (_db.prepare("PRAGMA table_info(profile_snapshots)").all() as Array<{ name: string }>).map(c => c.name)
+  if (!profileCols.includes('validation_notes')) {
+    _db.exec("ALTER TABLE profile_snapshots ADD COLUMN validation_notes TEXT NOT NULL DEFAULT '[]'")
+  }
 
   return _db
 }
@@ -193,8 +209,30 @@ function upsertSnapshot<TPayload>(
   snapshot: SnapshotInput<TPayload>,
 ): void {
   const db = getDb()
+
+  if (table === 'profile_snapshots') {
+    db.prepare(`
+      INSERT INTO profile_snapshots (did, record_uri, rkey, payload, validation_notes, updated_at)
+      VALUES (@did, @recordUri, @rkey, @payload, @validationNotes, @updatedAt)
+      ON CONFLICT(did) DO UPDATE SET
+        record_uri = excluded.record_uri,
+        rkey = excluded.rkey,
+        payload = excluded.payload,
+        validation_notes = excluded.validation_notes,
+        updated_at = excluded.updated_at
+    `).run({
+      did: snapshot.did,
+      recordUri: snapshot.recordUri,
+      rkey: snapshot.rkey,
+      payload: JSON.stringify(snapshot.payload),
+      validationNotes: JSON.stringify(snapshot.validationNotes ?? []),
+      updatedAt: snapshot.updatedAt ?? new Date().toISOString(),
+    })
+    return
+  }
+
   db.prepare(`
-    INSERT INTO ${table} (did, record_uri, rkey, payload, updated_at)
+    INSERT INTO organization_snapshots (did, record_uri, rkey, payload, updated_at)
     VALUES (@did, @recordUri, @rkey, @payload, @updatedAt)
     ON CONFLICT(did) DO UPDATE SET
       record_uri = excluded.record_uri,
@@ -215,8 +253,11 @@ function getSnapshot<T>(
   did: string,
 ): SnapshotRecord<T> | null {
   const db = getDb()
+  const selectColumns = table === 'profile_snapshots'
+    ? 'did, record_uri, rkey, payload, updated_at, validation_notes'
+    : 'did, record_uri, rkey, payload, updated_at'
   const row = db.prepare(
-    `SELECT did, record_uri, rkey, payload, updated_at FROM ${table} WHERE did = ?`
+    `SELECT ${selectColumns} FROM ${table} WHERE did = ?`
   ).get(did) as SnapshotRow | undefined
 
   return row ? snapshotRowToEntry<T>(row) : null
@@ -230,8 +271,11 @@ function listSnapshots<T>(
   const db = getDb()
   const safeLimit = Math.max(1, Math.min(limit || 50, 100))
   const safeOffset = Math.max(0, offset || 0)
+  const selectColumns = table === 'profile_snapshots'
+    ? 'did, record_uri, rkey, payload, updated_at, validation_notes'
+    : 'did, record_uri, rkey, payload, updated_at'
   const rows = db.prepare(`
-    SELECT did, record_uri, rkey, payload, updated_at
+    SELECT ${selectColumns}
     FROM ${table}
     ORDER BY updated_at DESC
     LIMIT ? OFFSET ?
@@ -249,12 +293,21 @@ export function upsertProfileSnapshot(snapshot: SnapshotInput<ProfileSnapshot['p
   upsertSnapshot('profile_snapshots', snapshot)
 }
 
-export function getProfileSnapshot(did: string): ProfileSnapshot | null {
-  return getSnapshot<ProfileSnapshot['payload']>('profile_snapshots', did)
+export function getProfileSnapshot(did: string): (ProfileSnapshot & { validationNotes: string[] }) | null {
+  const snapshot = getSnapshot<ProfileSnapshot['payload']>('profile_snapshots', did)
+  if (!snapshot) return null
+
+  return {
+    ...snapshot,
+    validationNotes: snapshot.validationNotes ?? [],
+  }
 }
 
-export function listProfileSnapshots(limit = 50, offset = 0): ProfileSnapshot[] {
-  return listSnapshots<ProfileSnapshot['payload']>('profile_snapshots', limit, offset)
+export function listProfileSnapshots(limit = 50, offset = 0): Array<ProfileSnapshot & { validationNotes: string[] }> {
+  return listSnapshots<ProfileSnapshot['payload']>('profile_snapshots', limit, offset).map(snapshot => ({
+    ...snapshot,
+    validationNotes: snapshot.validationNotes ?? [],
+  }))
 }
 
 export function deleteProfileSnapshot(did: string): void {
@@ -344,9 +397,9 @@ export function logActivity(entry: ActivityLogInput, hf?: HfClassificationData):
 
   const stmt = db.prepare(`
     INSERT INTO activities
-      (did, rkey, uri, title, score, tier, breakdown, test_signals, labeled_at, hf_label, hf_score)
+      (did, rkey, uri, title, score, tier, breakdown, test_signals, validation_notes, labeled_at, hf_label, hf_score)
     VALUES
-      (@did, @rkey, @uri, @title, @score, @tier, @breakdown, @testSignals, @labeledAt, @hfLabel, @hfScore)
+      (@did, @rkey, @uri, @title, @score, @tier, @breakdown, @testSignals, @validationNotes, @labeledAt, @hfLabel, @hfScore)
     ON CONFLICT(did, rkey) DO UPDATE SET
       uri = excluded.uri,
       title = excluded.title,
@@ -354,6 +407,7 @@ export function logActivity(entry: ActivityLogInput, hf?: HfClassificationData):
       tier = excluded.tier,
       breakdown = excluded.breakdown,
       test_signals = excluded.test_signals,
+      validation_notes = excluded.validation_notes,
       labeled_at = excluded.labeled_at,
       hf_label = COALESCE(excluded.hf_label, activities.hf_label),
       hf_score = COALESCE(excluded.hf_score, activities.hf_score)
@@ -367,24 +421,26 @@ export function logActivity(entry: ActivityLogInput, hf?: HfClassificationData):
     tier: entry.tier,
     breakdown: entry.breakdown,
     testSignals: entry.testSignals,
+    validationNotes: JSON.stringify(entry.validationNotes ?? []),
     labeledAt: entry.labeledAt,
     hfLabel: hf?.hfLabel ?? null,
     hfScore: hf?.hfScore ?? null,
   })
 }
 
-// Update an existing activity row's score, tier, breakdown, and testSignals.
-export function updateActivity(did: string, rkey: string, updates: { score: number; tier: LabelTier; breakdown: string; testSignals: string }): void {
+// Update an existing activity row's score, tier, breakdown, testSignals, and validation notes.
+export function updateActivity(did: string, rkey: string, updates: { score: number; tier: LabelTier; breakdown: string; testSignals: string; validationNotes?: string[] }): void {
   const db = getDb()
   db.prepare(`
     UPDATE activities
-    SET score = @score, tier = @tier, breakdown = @breakdown, test_signals = @testSignals
+    SET score = @score, tier = @tier, breakdown = @breakdown, test_signals = @testSignals, validation_notes = COALESCE(@validationNotes, validation_notes)
     WHERE did = @did AND rkey = @rkey
   `).run({
     score: updates.score,
     tier: updates.tier,
     breakdown: updates.breakdown,
     testSignals: updates.testSignals,
+    validationNotes: updates.validationNotes ? JSON.stringify(updates.validationNotes) : null,
     did,
     rkey,
   })
@@ -397,7 +453,7 @@ export function getRecentActivities(limit = 20, offset = 0): ActivityLogEntry[] 
   const safeLimit = Math.max(1, Math.min(limit || 20, 100))
   const safeOffset = Math.max(0, offset || 0)
   const rows = db.prepare(`
-    SELECT id, did, rkey, uri, title AS displayName, score, tier, breakdown, test_signals, labeled_at, hf_label, hf_score
+    SELECT ${ACTIVITY_SELECT_COLUMNS}
     FROM activities
     ORDER BY labeled_at DESC
     LIMIT ? OFFSET ?
@@ -413,7 +469,7 @@ export function getActivitiesByTier(tier: RuntimeLabelTier, limit = 20, offset =
   const safeLimit = Math.max(1, Math.min(limit || 20, 100))
   const safeOffset = Math.max(0, offset || 0)
   const rows = db.prepare(`
-    SELECT id, did, rkey, uri, title AS displayName, score, tier, breakdown, test_signals, labeled_at, hf_label, hf_score
+    SELECT ${ACTIVITY_SELECT_COLUMNS}
     FROM activities
     WHERE tier = ?
     ORDER BY labeled_at DESC
@@ -473,7 +529,7 @@ export function getStats(): LabelStats {
 export function getPendingActivities(): ActivityLogEntry[] {
   const db = getDb()
   const rows = db.prepare(
-    'SELECT id, did, rkey, uri, title AS displayName, score, tier, breakdown, test_signals, labeled_at, hf_label, hf_score FROM activities WHERE tier NOT IN (?, ?, ?)'
+    `SELECT ${ACTIVITY_SELECT_COLUMNS} FROM activities WHERE tier NOT IN (?, ?, ?)`
   ).all('likely-test', 'standard', 'high-quality') as Array<Record<string, unknown>>
   return rows.map(rowToEntry)
 }
@@ -504,7 +560,7 @@ export function getAiEvaluatedActivities(limit = 20, offset = 0): ActivityLogEnt
   const safeLimit = Math.max(1, Math.min(limit || 20, 100))
   const safeOffset = Math.max(0, offset || 0)
   const rows = db.prepare(`
-    SELECT id, did, rkey, uri, title AS displayName, score, tier, breakdown, test_signals, labeled_at, hf_label, hf_score
+    SELECT ${ACTIVITY_SELECT_COLUMNS}
     FROM activities
     WHERE hf_label IS NOT NULL
     ORDER BY labeled_at DESC
@@ -553,7 +609,7 @@ export function searchActivities(query: string, limit = 20, offset = 0): Activit
   const safeOffset = Math.max(0, offset || 0)
   const pattern = `%${query}%`
   const rows = db.prepare(`
-    SELECT id, did, rkey, uri, title AS displayName, score, tier, breakdown, test_signals, labeled_at, hf_label, hf_score
+    SELECT ${ACTIVITY_SELECT_COLUMNS}
     FROM activities
     WHERE title LIKE @pattern OR did LIKE @pattern OR uri LIKE @pattern
     ORDER BY labeled_at DESC
@@ -576,7 +632,7 @@ export function searchActivitiesCount(query: string): number {
 export function getActivityByDidRkey(did: string, rkey: string): ActivityLogEntry | null {
   const db = getDb()
   const row = db.prepare(
-    'SELECT id, did, rkey, uri, title AS displayName, score, tier, breakdown, test_signals, labeled_at, hf_label, hf_score FROM activities WHERE did = ? AND rkey = ?'
+    `SELECT ${ACTIVITY_SELECT_COLUMNS} FROM activities WHERE did = ? AND rkey = ?`
   ).get(did, rkey) as Record<string, unknown> | undefined
   return row ? rowToEntry(row) : null
 }
@@ -592,6 +648,7 @@ function rowToEntry(row: Record<string, unknown>): ActivityLogEntry {
     tier: row['tier'] as LabelTier,
     breakdown: row['breakdown'] as string,
     testSignals: row['test_signals'] as string,
+    validationNotes: JSON.parse(row['validation_notes'] as string) as string[],
     labeledAt: row['labeled_at'] as string,
     hfLabel: (row['hf_label'] as string | null) ?? null,
     hfScore: (row['hf_score'] as number | null) ?? null,
@@ -605,5 +662,17 @@ function snapshotRowToEntry<T>(row: SnapshotRow): SnapshotRecord<T> {
     rkey: row.rkey,
     payload: JSON.parse(row.payload) as T,
     updatedAt: row.updated_at,
+    validationNotes: parseValidationNotes(row.validation_notes),
   } as SnapshotRecord<T>
+}
+
+function parseValidationNotes(value: string | null | undefined): string[] | undefined {
+  if (!value) return undefined
+
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : undefined
+  } catch {
+    return undefined
+  }
 }
