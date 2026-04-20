@@ -2,16 +2,29 @@ import { Tap, SimpleIndexer } from '@atproto/tap'
 import type { TapChannel } from '@atproto/tap'
 import { TAP_URL, TAP_ADMIN_PASSWORD, ACTIVITY_COLLECTION } from '../lib/config'
 import { scoreActivity } from '../lib/scorer'
-import { logActivity, getUnclassifiedActivities, getAllActivitiesForSync } from '../lib/db'
+import {
+  logActivity,
+  getUnclassifiedActivities,
+  getAllActivitiesForSync,
+  getProfileSnapshot,
+  getOrganizationSnapshot,
+  upsertProfileSnapshot,
+  upsertOrganizationSnapshot,
+} from '../lib/db'
 import { enqueueClassification, reevaluateExistingClassifications } from '../lib/hf-classifier'
 import { applyQualityLabel, fetchCurrentLabels } from './server'
 import { extractDescriptionText } from '../lib/lexicon-utils'
+import { getMergedActorDisplay } from '../lib/actor-display'
 import logger from './logger'
 import type { ActivityRecord, RuntimeLabelTier } from '../lib/types'
+import { $safeParse as $safeParseProfile } from '../lexicons/app/certified/actor/profile.defs'
 import { $safeParse } from '../lexicons/app/certified/actor/organization.defs'
 
 const tapConfig = TAP_ADMIN_PASSWORD ? { adminPassword: TAP_ADMIN_PASSWORD } : undefined
 const tap = new Tap(TAP_URL, tapConfig)
+
+const PROFILE_COLLECTION = 'app.certified.actor.profile'
+const ORGANIZATION_COLLECTION = ACTIVITY_COLLECTION
 
 const indexer = new SimpleIndexer()
 
@@ -19,18 +32,99 @@ function isRuntimeLabelTier(tier: string): tier is RuntimeLabelTier {
   return tier === 'likely-test' || tier === 'standard' || tier === 'high-quality'
 }
 
-indexer.record(async (evt) => {
-  // Only process our collection
-  if (evt.collection !== ACTIVITY_COLLECTION) return
+async function recomputeLabeledOrganizationRow(did: string): Promise<void> {
+  const organization = getOrganizationSnapshot(did)
+  if (!organization) return
 
-  // Skip deletes
+  const profile = getProfileSnapshot(did)
+  const merged = getMergedActorDisplay({
+    did,
+    profile: profile?.payload ?? null,
+    organization: organization.payload,
+  })
+
+  let result
+  try {
+    result = scoreActivity(organization.payload as ActivityRecord)
+  } catch (err) {
+    logger.error({ err, did, rkey: organization.rkey }, 'Error scoring organization snapshot')
+    return
+  }
+
+  try {
+    logActivity({
+      did,
+      rkey: organization.rkey,
+      uri: organization.recordUri,
+      title: merged.displayName,
+      score: result.totalScore,
+      tier: result.tier,
+      breakdown: JSON.stringify(result.breakdown),
+      testSignals: JSON.stringify(result.testSignals),
+      labeledAt: new Date().toISOString(),
+    })
+    logger.info(
+      { did, rkey: organization.rkey, score: result.totalScore, tier: result.tier },
+      `Scored merged organization row: ${result.totalScore}/100 → ${result.tier}`
+    )
+  } catch (err) {
+    logger.error({ err, did, rkey: organization.rkey }, 'Error logging organization row')
+    return
+  }
+
+  try {
+    await applyQualityLabel(organization.recordUri, result.tier)
+  } catch (err) {
+    logger.error({ err, uri: organization.recordUri, did }, 'Error applying organization label (score still saved)')
+  }
+}
+
+indexer.record(async (evt) => {
+  if (evt.collection === PROFILE_COLLECTION) {
+    if (evt.action === 'delete') {
+      logger.debug({ did: evt.did, rkey: evt.rkey }, 'Skipping profile delete event')
+      return
+    }
+
+    if (!evt.record) {
+      logger.warn({ did: evt.did, rkey: evt.rkey, action: evt.action }, 'Skipping profile event with missing record payload')
+      return
+    }
+
+    const parsed = $safeParseProfile(evt.record)
+    if (!parsed.success) {
+      logger.warn(
+        { did: evt.did, rkey: evt.rkey, reason: parsed.reason?.message },
+        'Profile record failed lexicon validation — skipping',
+      )
+      return
+    }
+
+    upsertProfileSnapshot({
+      did: evt.did,
+      recordUri: `at://${evt.did}/${PROFILE_COLLECTION}/${evt.rkey}`,
+      rkey: evt.rkey,
+      payload: parsed.value,
+      updatedAt: new Date().toISOString(),
+    })
+
+    if (getOrganizationSnapshot(evt.did)) {
+      await recomputeLabeledOrganizationRow(evt.did)
+    }
+
+    logger.debug({ did: evt.did, rkey: evt.rkey }, 'Stored profile snapshot')
+    return
+  }
+
+  if (evt.collection !== ORGANIZATION_COLLECTION) return
+
   if (evt.action === 'delete') {
-    logger.debug({ did: evt.did, rkey: evt.rkey }, 'Skipping delete event')
+    logger.debug({ did: evt.did, rkey: evt.rkey }, 'Skipping organization delete event')
     return
   }
 
   if (!evt.record) {
-    logger.warn({ did: evt.did, rkey: evt.rkey, action: evt.action }, 'Skipping event with missing record payload')
+    logger.warn({ did: evt.did, rkey: evt.rkey, action: evt.action }, 'Skipping organization event with missing record payload')
     return
   }
 
@@ -44,53 +138,17 @@ indexer.record(async (evt) => {
     return
   }
   const record = parsed.value as ActivityRecord
-  const source = evt.live === false ? 'backfill' : 'live'
+  upsertOrganizationSnapshot({
+    did: evt.did,
+    recordUri: `at://${evt.did}/${ORGANIZATION_COLLECTION}/${evt.rkey}`,
+    rkey: evt.rkey,
+    payload: parsed.value,
+    updatedAt: new Date().toISOString(),
+  })
 
-  // Normalize title once — scorer sees raw value (empty string if absent),
-  // logActivity uses 'Untitled' for dashboard display only
-  const title = record.title ?? ''
+  await recomputeLabeledOrganizationRow(evt.did)
 
-  // Step 1: Score (pure computation — cannot fail from DB issues)
-  let result
-  try {
-    result = scoreActivity({ ...record, title })
-  } catch (err) {
-    logger.error({ err, did: evt.did, rkey: evt.rkey }, 'Error scoring activity')
-    return
-  }
-
-  const recordUri = `at://${evt.did}/${ACTIVITY_COLLECTION}/${evt.rkey}`
-
-  // Step 2: Log immediately with scorer result (HF data will be backfilled by background queue)
-  try {
-    logActivity({
-      did: evt.did,
-      rkey: evt.rkey,
-      uri: recordUri,
-      title: title || 'Untitled',
-      score: result.totalScore,
-      tier: result.tier,
-      breakdown: JSON.stringify(result.breakdown),
-      testSignals: JSON.stringify(result.testSignals),
-      labeledAt: new Date().toISOString(),
-    })
-    logger.info(
-      { did: evt.did, rkey: evt.rkey, score: result.totalScore, tier: result.tier, source },
-      `Scored: ${result.totalScore}/100 → ${result.tier}`
-    )
-  } catch (err) {
-    logger.error({ err, did: evt.did, rkey: evt.rkey }, 'Error logging activity')
-    return
-  }
-
-  // Step 3: Apply AT Proto label immediately (no waiting for HF)
-  try {
-    await applyQualityLabel(recordUri, result.tier)
-  } catch (err) {
-    logger.error({ err, uri: recordUri, did: evt.did }, 'Error applying label (score still saved)')
-  }
-
-  // Step 4: Fire-and-forget: enqueue HF classification (runs in background, updates DB when done)
+  // Fire-and-forget: enqueue HF classification (runs in background, updates DB when done)
   // description is now a pub.leaflet.pages.linearDocument object — extract plain text from blocks
   const descText = extractDescriptionText(record.description)
   const text = [record.title ?? '', record.shortDescription ?? '', descText].filter(Boolean).join(' ')

@@ -1,10 +1,41 @@
 import Database from 'better-sqlite3'
 import { ACTIVITY_DB_PATH } from './config'
-import type { ActivityLogEntry, LabelStats, LabelTier, RuntimeLabelTier } from './types'
+import type {
+  ActivityLogEntry,
+  LabelStats,
+  LabelTier,
+  OrganizationSnapshot,
+  ProfileSnapshot,
+  RuntimeLabelTier,
+} from './types'
 
 export interface HfClassificationData {
   hfLabel: string | null
   hfScore: number | null
+}
+
+type SnapshotInput<TPayload> = {
+  did: string
+  recordUri: string
+  rkey: string
+  payload: TPayload
+  updatedAt?: string
+}
+
+interface SnapshotRecord<TPayload> {
+  did: string
+  recordUri: string
+  rkey: string
+  payload: TPayload
+  updatedAt: string
+}
+
+interface SnapshotRow {
+  did: string
+  record_uri: string
+  rkey: string
+  payload: string
+  updated_at: string
 }
 
 let _db: Database.Database | null = null
@@ -33,6 +64,30 @@ function createActivitiesTable(db: Database.Database): void {
   `)
 }
 
+function createSnapshotTables(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS profile_snapshots (
+      did TEXT PRIMARY KEY,
+      record_uri TEXT NOT NULL,
+      rkey TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_profile_snapshots_updated_at ON profile_snapshots(updated_at);
+
+    CREATE TABLE IF NOT EXISTS organization_snapshots (
+      did TEXT PRIMARY KEY,
+      record_uri TEXT NOT NULL,
+      rkey TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_organization_snapshots_updated_at ON organization_snapshots(updated_at);
+  `)
+}
+
 // Lazy-init singleton. Creates DB file + tables on first call.
 export function getDb(): Database.Database {
   if (_db) return _db
@@ -41,6 +96,7 @@ export function getDb(): Database.Database {
   _db.pragma('journal_mode = WAL')
 
   createActivitiesTable(_db)
+  createSnapshotTables(_db)
 
   // Migration: recreate tables whose tier CHECK constraint predates the active 3-tier set.
   try {
@@ -89,6 +145,95 @@ export function closeDb(): void {
     _db.close()
     _db = null
   }
+}
+
+function upsertSnapshot<TPayload>(
+  table: 'profile_snapshots' | 'organization_snapshots',
+  snapshot: SnapshotInput<TPayload>,
+): void {
+  const db = getDb()
+  db.prepare(`
+    INSERT INTO ${table} (did, record_uri, rkey, payload, updated_at)
+    VALUES (@did, @recordUri, @rkey, @payload, @updatedAt)
+    ON CONFLICT(did) DO UPDATE SET
+      record_uri = excluded.record_uri,
+      rkey = excluded.rkey,
+      payload = excluded.payload,
+      updated_at = excluded.updated_at
+  `).run({
+    did: snapshot.did,
+    recordUri: snapshot.recordUri,
+    rkey: snapshot.rkey,
+    payload: JSON.stringify(snapshot.payload),
+    updatedAt: snapshot.updatedAt ?? new Date().toISOString(),
+  })
+}
+
+function getSnapshot<T>(
+  table: 'profile_snapshots' | 'organization_snapshots',
+  did: string,
+): SnapshotRecord<T> | null {
+  const db = getDb()
+  const row = db.prepare(
+    `SELECT did, record_uri, rkey, payload, updated_at FROM ${table} WHERE did = ?`
+  ).get(did) as SnapshotRow | undefined
+
+  return row ? snapshotRowToEntry<T>(row) : null
+}
+
+function listSnapshots<T>(
+  table: 'profile_snapshots' | 'organization_snapshots',
+  limit = 50,
+  offset = 0,
+): Array<SnapshotRecord<T>> {
+  const db = getDb()
+  const safeLimit = Math.max(1, Math.min(limit || 50, 100))
+  const safeOffset = Math.max(0, offset || 0)
+  const rows = db.prepare(`
+    SELECT did, record_uri, rkey, payload, updated_at
+    FROM ${table}
+    ORDER BY updated_at DESC
+    LIMIT ? OFFSET ?
+  `).all(safeLimit, safeOffset) as SnapshotRow[]
+
+  return rows.map(row => snapshotRowToEntry<T>(row))
+}
+
+function deleteSnapshot(table: 'profile_snapshots' | 'organization_snapshots', did: string): void {
+  const db = getDb()
+  db.prepare(`DELETE FROM ${table} WHERE did = ?`).run(did)
+}
+
+export function upsertProfileSnapshot(snapshot: SnapshotInput<ProfileSnapshot['payload']>): void {
+  upsertSnapshot('profile_snapshots', snapshot)
+}
+
+export function getProfileSnapshot(did: string): ProfileSnapshot | null {
+  return getSnapshot<ProfileSnapshot['payload']>('profile_snapshots', did)
+}
+
+export function listProfileSnapshots(limit = 50, offset = 0): ProfileSnapshot[] {
+  return listSnapshots<ProfileSnapshot['payload']>('profile_snapshots', limit, offset)
+}
+
+export function deleteProfileSnapshot(did: string): void {
+  deleteSnapshot('profile_snapshots', did)
+}
+
+export function upsertOrganizationSnapshot(snapshot: SnapshotInput<OrganizationSnapshot['payload']>): void {
+  upsertSnapshot('organization_snapshots', snapshot)
+}
+
+export function getOrganizationSnapshot(did: string): OrganizationSnapshot | null {
+  return getSnapshot<OrganizationSnapshot['payload']>('organization_snapshots', did)
+}
+
+export function listOrganizationSnapshots(limit = 50, offset = 0): OrganizationSnapshot[] {
+  return listSnapshots<OrganizationSnapshot['payload']>('organization_snapshots', limit, offset)
+}
+
+export function deleteOrganizationSnapshot(did: string): void {
+  deleteSnapshot('organization_snapshots', did)
 }
 
 // Upsert on did+rkey. Preserves existing hf_label/hf_score when the new values are null.
@@ -341,4 +486,14 @@ function rowToEntry(row: Record<string, unknown>): ActivityLogEntry {
     hfLabel: (row['hf_label'] as string | null) ?? null,
     hfScore: (row['hf_score'] as number | null) ?? null,
   }
+}
+
+function snapshotRowToEntry<T>(row: SnapshotRow): SnapshotRecord<T> {
+  return {
+    did: row.did,
+    recordUri: row.record_uri,
+    rkey: row.rkey,
+    payload: JSON.parse(row.payload) as T,
+    updatedAt: row.updated_at,
+  } as SnapshotRecord<T>
 }
