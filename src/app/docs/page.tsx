@@ -1,32 +1,73 @@
 'use client'
 
 import { ScoreBadge } from '@/components/ScoreBadge'
+import { COMPLETENESS_WEIGHTS } from '@/lib/constants'
 
 const SCORING_CRITERIA = [
   {
+    label: 'Display name',
+    points: COMPLETENESS_WEIGHTS.displayName,
+    description: 'Awards points when the display name comes from the profile or organization type instead of the DID fallback.',
+  },
+  {
+    label: 'Description',
+    points: COMPLETENESS_WEIGHTS.description,
+    description: 'Awards points when the profile description is present and not obvious test data.',
+  },
+  {
     label: 'Organization type',
-    points: 30,
-    description: 'Scores the organizationType field: 12 for one distinct value, 20 for two, 30 for three or more.',
+    points: COMPLETENESS_WEIGHTS.organizationType,
+    description: 'Awards partial points for only `other`, full points for a specific organization type.',
   },
   {
-    label: 'URLs',
-    points: 30,
-    description: 'Scores valid organization URLs: 12 for one, 20 for two, 30 for three or more. Test or local URLs are ignored.',
+    label: 'Website present',
+    points: COMPLETENESS_WEIGHTS.websitePresent,
+    description: 'Awards points when the profile website is filled in.',
   },
   {
-    label: 'Location',
-    points: 20,
-    description: 'Awards 20 points when a location is present.',
+    label: 'Website resolves',
+    points: COMPLETENESS_WEIGHTS.websiteResolves,
+    description: 'Awards points when the profile website is a valid public HTTP(S) URL.',
   },
   {
-    label: 'Founded date',
-    points: 15,
-    description: 'Awards 15 points for a valid, non-future foundedDate.',
+    label: 'Website matches name',
+    points: COMPLETENESS_WEIGHTS.websiteMatchesName,
+    description: 'Awards points when the display name matches the website domain stem.',
   },
   {
-    label: 'Created at',
-    points: 15,
-    description: 'Awards 15 points for a valid, non-future createdAt value.',
+    label: 'Organization URLs present',
+    points: COMPLETENESS_WEIGHTS.organizationUrlsPresent,
+    description: 'Awards points when the organization has at least one URL.',
+  },
+  {
+    label: 'Organization URLs resolve',
+    points: COMPLETENESS_WEIGHTS.organizationUrlsResolve,
+    description: 'Awards points when at least one organization URL is a valid public HTTP(S) URL.',
+  },
+  {
+    label: 'Location valid',
+    points: COMPLETENESS_WEIGHTS.locationValid,
+    description: 'Awards points when the location is a valid certified location reference.',
+  },
+  {
+    label: 'Founded date valid',
+    points: COMPLETENESS_WEIGHTS.foundedDateValid,
+    description: 'Awards points for a valid, non-future foundedDate.',
+  },
+  {
+    label: 'Founded date age',
+    points: COMPLETENESS_WEIGHTS.foundedDateAge,
+    description: 'Awards bonus points when the founded date is at least a year old.',
+  },
+  {
+    label: 'Avatar',
+    points: COMPLETENESS_WEIGHTS.avatar,
+    description: 'Awards points when the profile has an avatar.',
+  },
+  {
+    label: 'Banner',
+    points: COMPLETENESS_WEIGHTS.banner,
+    description: 'Awards points when the profile has a banner.',
   },
 ]
 
@@ -73,7 +114,7 @@ export default function DocsPage() {
             {[
               { step: 'Profile + Organization Records', sub: 'collected together by Tap' },
               { step: 'Merged by DID', sub: 'for actor context' },
-              { step: 'Scored', sub: 'organization data + test signals' },
+              { step: 'Scored', sub: 'merged profile + organization context' },
               { step: 'Labeled', sub: 'signed label applied to the organization record URI' },
             ].map(({ step, sub }, i, arr) => (
               <div key={step} className='flex items-center gap-2'>
@@ -114,7 +155,7 @@ export default function DocsPage() {
           <li className='flex gap-3'>
             <span className='font-[family-name:var(--font-syne)] font-bold text-foreground shrink-0'>3.</span>
             <span>
-              The scoring engine evaluates the organization record against 5 rubric fields worth 100 points in total.
+              The scoring engine evaluates merged profile + organization data against a 100-point completeness rubric.
               Test signals are checked first — any record that looks like placeholder data is labeled
               <ScoreBadge tier='likely-test' /> regardless of its numeric score.
             </span>
@@ -134,8 +175,8 @@ export default function DocsPage() {
           Scoring criteria
         </h2>
         <p className='text-sm text-muted-foreground'>
-          Each organization record is evaluated on 5 criteria for a maximum of 100 points. Profile data is carried
-          along for context, but labels stay attached to the organization record URI.
+          Each organization record is evaluated on 13 criteria for a maximum of 100 points. Profile data is folded
+          into the score, but labels stay attached to the organization record URI.
         </p>
         <div className='border border-border rounded-lg bg-card overflow-hidden'>
           <table className='w-full text-sm'>
@@ -205,12 +246,12 @@ export default function DocsPage() {
             {
               tier: 'high-quality' as const,
               range: '75 – 100',
-              detail: 'Complete organization record with strong type, URL, location, and date coverage.',
+              detail: 'Strong merged profile + organization record with broad completeness across the rubric.',
             },
             {
               tier: 'standard' as const,
               range: '35 – 74',
-              detail: 'Basic organization record with some useful metadata but not full coverage.',
+              detail: 'Decent merged record with some useful metadata, but not full rubric coverage.',
             },
             {
               tier: 'likely-test' as const,

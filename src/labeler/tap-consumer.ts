@@ -22,6 +22,7 @@ import {
 import { enqueueClassification, reevaluateExistingClassifications } from '../lib/hf-classifier'
 import { applyQualityLabel, fetchCurrentLabels, negateQualityLabels } from './server'
 import { getMergedActorDisplay } from '../lib/actor-display'
+import { buildMergedScoringInput } from '../lib/scoring-input'
 import logger from './logger'
 import type { ActivityRecord, RuntimeLabelTier } from '../lib/types'
 import { $safeParse as $safeParseProfile } from '../lexicons/app/certified/actor/profile.defs'
@@ -86,6 +87,11 @@ export async function recomputeLabeledOrganizationRow(did: string): Promise<void
   if (!organization) return
 
   const profile = getProfileSnapshot(did)
+  const scoringInput = buildMergedScoringInput({
+    did,
+    profile: profile?.payload ?? null,
+    organization: organization.payload,
+  })
   const merged = getMergedActorDisplay({
     did,
     profile: profile?.payload ?? null,
@@ -94,7 +100,7 @@ export async function recomputeLabeledOrganizationRow(did: string): Promise<void
 
   let result
   try {
-    result = scoreActivity(organization.payload as ActivityRecord)
+    result = scoreActivity(scoringInput)
   } catch (err) {
     logger.error({ err, did, rkey: organization.rkey }, 'Error scoring organization snapshot')
     return

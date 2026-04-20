@@ -2,6 +2,8 @@ import type { LabelDefinition } from './types'
 
 type RuntimeQualityTier = 'likely-test' | 'standard' | 'high-quality'
 
+export const AUTHENTICITY_FAILURE_TIER: RuntimeQualityTier = 'likely-test'
+
 export const LABELS: LabelDefinition[] = [
   {
     identifier: 'likely-test',
@@ -18,10 +20,28 @@ export const LABELS: LabelDefinition[] = [
 ]
 
 export const SCORE_THRESHOLDS: Record<RuntimeQualityTier, { min: number; max: number }> = {
-  'likely-test':  { min: 0, max: 34 },
-  'standard':     { min: 35, max: 74 },
+  'likely-test': { min: 0, max: 34 },
+  standard: { min: 35, max: 74 },
   'high-quality': { min: 75, max: 100 },
 }
+
+export const COMPLETENESS_WEIGHTS = {
+  displayName: 15,
+  description: 15,
+  organizationType: 10,
+  websitePresent: 10,
+  websiteResolves: 10,
+  websiteMatchesName: 5,
+  organizationUrlsPresent: 5,
+  organizationUrlsResolve: 5,
+  locationValid: 5,
+  foundedDateValid: 5,
+  foundedDateAge: 5,
+  avatar: 5,
+  banner: 5,
+} as const
+
+export const COMPLETENESS_WEIGHT_TOTAL = 100
 
 export const TEST_PATTERNS: RegExp[] = [
   // Word-boundary "test" — catches "Another Test", "Test Contributors", "This is testing", "test 123"

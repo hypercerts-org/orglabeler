@@ -1,17 +1,5 @@
 import type { MergedActorInput, MergedActorOutput } from './types'
-
-function firstNonEmpty(values: Array<string | undefined | null>): string | null {
-  for (const value of values) {
-    const trimmed = value?.trim()
-    if (trimmed) return trimmed
-  }
-
-  return null
-}
-
-function shortDid(did: string): string {
-  return did.replace(/^did:plc:/, '').slice(0, 12) + '…'
-}
+import { buildMergedScoringInput } from './scoring-input'
 
 function websiteHostname(website: string | undefined | null): string | null {
   if (!website?.trim()) return null
@@ -24,22 +12,16 @@ function websiteHostname(website: string | undefined | null): string | null {
 }
 
 export function getMergedActorDisplay(actor: MergedActorInput): MergedActorOutput {
-  const profileDisplayName = actor.profile?.displayName?.trim()
-  const organizationType = firstNonEmpty(actor.organization?.organizationType ?? [])
-
-  const displayName = profileDisplayName ?? organizationType ?? shortDid(actor.did)
-  const hasProfileDescription = Boolean(actor.profile?.description?.trim())
-  const hasWebsite = Boolean(actor.profile?.website?.trim())
-  const hasAvatar = actor.profile?.avatar != null
+  const merged = buildMergedScoringInput(actor)
 
   return {
     did: actor.did,
     profile: actor.profile,
     organization: actor.organization,
-    displayName,
-    hasProfileDescription,
-    hasWebsite,
-    hasAvatar,
-    websiteHostname: websiteHostname(actor.profile?.website),
+    displayName: merged.displayName,
+    hasProfileDescription: Boolean(merged.profileDescription),
+    hasWebsite: Boolean(merged.profileWebsite),
+    hasAvatar: merged.hasAvatar,
+    websiteHostname: websiteHostname(merged.profileWebsite),
   }
 }

@@ -58,26 +58,19 @@ export interface ScoreResult {
 }
 
 export interface ScoreBreakdown {
+  displayName: number
+  description: number
   organizationType: number
-  urls: number
-  location: number
-  foundedDate: number
-  createdAt: number
-
-  // Negative penalty for repeated or duplicated organization metadata.
-  repetitionPenalty?: number
-
-  // Legacy compatibility aliases for the existing dashboard breakdown view.
-  titleQuality: number
-  shortDescQuality: number
-  descriptionQuality: number
-  hasImage: number
-  hasWorkScope: number
-  contributorQuality: number
-  hasLocations: number
-  hasDateRange: number
-  hasRights: number
-  repetitionFlags: number
+  websitePresent: number
+  websiteResolves: number
+  websiteMatchesName: number
+  organizationUrlsPresent: number
+  organizationUrlsResolve: number
+  locationValid: number
+  foundedDateValid: number
+  foundedDateAge: number
+  avatar: number
+  banner: number
 }
 
 export interface LabelDefinition {

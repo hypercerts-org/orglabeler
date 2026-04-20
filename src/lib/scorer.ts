@@ -1,10 +1,8 @@
-import type { ActivityRecord, ScoreBreakdown, ScoreResult, LabelTier } from './types'
-import { TEST_PATTERNS } from './constants'
-
-type UrlItem = {
-  url?: string
-  label?: string
-}
+import type { LabelTier, ScoreBreakdown, ScoreResult } from './types'
+import type { MergedScoringInput } from './scoring-input'
+import { COMPLETENESS_WEIGHTS, TEST_PATTERNS } from './constants'
+import { validateOrganizationLocationRef } from './location-utils'
+import { displayNameMatchesWebsiteDomain, normalizePublicWebsiteUrl } from './website-utils'
 
 const HIGH_QUALITY_THRESHOLD = 75
 const STANDARD_THRESHOLD = 35
@@ -17,10 +15,11 @@ function isTestString(value: string): boolean {
   return TEST_PATTERNS.some(pattern => pattern.test(value))
 }
 
-function scoreOrganizationType(
-  organizationType: ActivityRecord['organizationType'],
-  testSignals: string[],
-): number {
+function isLocalUrl(value: string): boolean {
+  return /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?(\/|$)/i.test(value)
+}
+
+function scoreOrganizationType(organizationType: MergedScoringInput['organizationType'], testSignals: string[]): number {
   const values = (organizationType ?? [])
     .map(normalizeText)
     .filter(value => value.length > 0)
@@ -32,170 +31,146 @@ function scoreOrganizationType(
     return 0
   }
 
-  const uniqueCount = new Set(values.map(value => value.toLowerCase())).size
-
-  if (uniqueCount >= 3) return 30
-  if (uniqueCount === 2) return 20
-  return 12
+  const normalized = new Set(values.map(value => value.toLowerCase()))
+  if (normalized.has('other') && normalized.size === 1) return 5
+  if (values.length > 0) return COMPLETENESS_WEIGHTS.organizationType
+  return 0
 }
 
-function scoreUrls(urls: UrlItem[] | undefined, testSignals: string[]): number {
-  const items = Array.isArray(urls) ? urls : []
-  if (items.length === 0) return 0
-
-  const seenUrls = new Set<string>()
-  const seenLabels = new Set<string>()
-  let validUrls = 0
-
-  for (const item of items) {
-    const url = normalizeText(item?.url)
-    const label = normalizeText(item?.label)
-
-    if (!url) continue
-
-    const normalizedUrl = url.toLowerCase()
-    if (seenUrls.has(normalizedUrl)) {
-      testSignals.push('organization urls repeat the same address')
-      continue
-    }
-    seenUrls.add(normalizedUrl)
-
-    if (isTestString(url) || /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?(\/|$)/i.test(url)) {
-      testSignals.push('organization urls contain test or local addresses')
-      continue
-    }
-
-    validUrls += 1
-
-    if (label.length > 0) {
-      const normalizedLabel = label.toLowerCase()
-      if (isTestString(label)) {
-        testSignals.push('organization url labels contain test data')
-      }
-      if (seenLabels.has(normalizedLabel)) {
-        testSignals.push('organization url labels repeat')
-      }
-      seenLabels.add(normalizedLabel)
-    }
-  }
-
-  if (validUrls === 0) {
-    testSignals.push('organization urls are empty or junk')
+function scoreDisplayName(displayNameSource: MergedScoringInput['displayNameSource'], displayName: string, testSignals: string[]): number {
+  if (!displayName || isTestString(displayName)) {
+    if (displayName && isTestString(displayName)) testSignals.push('displayName contains test data')
     return 0
   }
 
-  if (validUrls >= 3) return 30
-  if (validUrls === 2) return 20
-  return 12
+  if (displayNameSource === 'did') return 0
+
+  return COMPLETENESS_WEIGHTS.displayName
 }
 
-function scoreLocation(location: ActivityRecord['location']): number {
-  return location ? 20 : 0
+function scoreDescription(description: string | null, testSignals: string[]): number {
+  if (!description) return 0
+  if (isTestString(description)) {
+    testSignals.push('profile description contains test data')
+    return 0
+  }
+
+  return COMPLETENESS_WEIGHTS.description
 }
 
-function scoreDate(
-  value: string | undefined,
-  label: string,
-  points: number,
-  testSignals: string[],
-): number {
+function scoreWebsitePresent(website: string | null): number {
+  return website ? COMPLETENESS_WEIGHTS.websitePresent : 0
+}
+
+function scoreWebsiteResolves(website: string | null, testSignals: string[]): number {
+  const normalized = normalizePublicWebsiteUrl(website)
+  if (!website) return 0
+  if (!normalized) {
+    if (isTestString(website) || isLocalUrl(website)) testSignals.push('profile website contains test or local data')
+    return 0
+  }
+
+  return COMPLETENESS_WEIGHTS.websiteResolves
+}
+
+function scoreWebsiteMatchesName(displayName: string, website: string | null): number {
+  if (!website) return 0
+  return displayNameMatchesWebsiteDomain(displayName, website) ? COMPLETENESS_WEIGHTS.websiteMatchesName : 0
+}
+
+function scoreOrganizationUrlsPresent(urls: MergedScoringInput['urls']): number {
+  return (urls ?? []).length > 0 ? COMPLETENESS_WEIGHTS.organizationUrlsPresent : 0
+}
+
+function scoreOrganizationUrlsResolve(urls: MergedScoringInput['urls'], testSignals: string[]): number {
+  const items = Array.isArray(urls) ? urls : []
+  const resolved = items.some(item => {
+    const normalized = normalizePublicWebsiteUrl(item.url)
+    if (!normalized && item.url && (isTestString(item.url) || isLocalUrl(item.url))) {
+      testSignals.push('organization urls contain test or local data')
+    }
+    return Boolean(normalized)
+  })
+
+  return resolved ? COMPLETENESS_WEIGHTS.organizationUrlsResolve : 0
+}
+
+function scoreLocation(location: MergedScoringInput['location']): number {
+  return validateOrganizationLocationRef(location).valid ? COMPLETENESS_WEIGHTS.locationValid : 0
+}
+
+function scoreFoundedDateValid(value: string | null, testSignals: string[]): number {
   const normalized = normalizeText(value)
   if (!normalized) return 0
 
   const timestamp = Date.parse(normalized)
   if (Number.isNaN(timestamp)) {
-    testSignals.push(`${label} is invalid`)
+    testSignals.push('foundedDate is invalid')
     return 0
   }
 
   if (timestamp > Date.now() + 24 * 60 * 60 * 1000) {
-    testSignals.push(`${label} is in the future`)
+    testSignals.push('foundedDate is in the future')
     return 0
   }
 
-  return points
+  return COMPLETENESS_WEIGHTS.foundedDateValid
 }
 
-function scoreRepetitionPenalty(record: ActivityRecord): number {
-  let penalty = 0
+function scoreFoundedDateAge(value: string | null): number {
+  const normalized = normalizeText(value)
+  if (!normalized) return 0
 
-  const orgTypes = (record.organizationType ?? [])
-    .map(normalizeText)
-    .filter(value => value.length > 0)
+  const timestamp = Date.parse(normalized)
+  if (Number.isNaN(timestamp)) return 0
+  if (timestamp > Date.now() + 24 * 60 * 60 * 1000) return 0
 
-  const duplicateOrgTypes = orgTypes.length - new Set(orgTypes.map(value => value.toLowerCase())).size
-  if (duplicateOrgTypes > 0) {
-    penalty -= duplicateOrgTypes * 5
-  }
-
-  const items = Array.isArray(record.urls) ? record.urls : []
-  const seenUrls = new Set<string>()
-  const seenLabels = new Set<string>()
-  let duplicateUrls = 0
-  let duplicateLabels = 0
-
-  for (const item of items) {
-    const url = normalizeText(item?.url)
-    const label = normalizeText(item?.label)
-
-    if (url) {
-      const normalizedUrl = url.toLowerCase()
-      if (seenUrls.has(normalizedUrl)) duplicateUrls += 1
-      else seenUrls.add(normalizedUrl)
-    }
-
-    if (label) {
-      const normalizedLabel = label.toLowerCase()
-      if (seenLabels.has(normalizedLabel)) duplicateLabels += 1
-      else seenLabels.add(normalizedLabel)
-    }
-  }
-
-  if (duplicateUrls > 0) {
-    penalty -= duplicateUrls * 5
-  }
-
-  if (duplicateLabels > 0) {
-    penalty -= duplicateLabels * 5
-  }
-
-  return penalty
+  const ageMs = Date.now() - timestamp
+  return ageMs >= 365 * 24 * 60 * 60 * 1000 ? COMPLETENESS_WEIGHTS.foundedDateAge : 0
 }
 
-export function scoreActivity(record: ActivityRecord): ScoreResult {
+function scoreAvatar(hasAvatar: boolean): number {
+  return hasAvatar ? COMPLETENESS_WEIGHTS.avatar : 0
+}
+
+function scoreBanner(hasBanner: boolean): number {
+  return hasBanner ? COMPLETENESS_WEIGHTS.banner : 0
+}
+
+export function scoreActivity(record: MergedScoringInput): ScoreResult {
   const testSignals: string[] = []
 
+  const displayName = scoreDisplayName(record.displayNameSource, record.displayName, testSignals)
+  const description = scoreDescription(record.profileDescription, testSignals)
   const organizationType = scoreOrganizationType(record.organizationType, testSignals)
-  const urls = scoreUrls(record.urls as UrlItem[] | undefined, testSignals)
-  const location = scoreLocation(record.location)
-  const foundedDate = scoreDate(record.foundedDate, 'foundedDate', 15, testSignals)
-  const createdAt = scoreDate(record.createdAt, 'createdAt', 15, testSignals)
-  const repetitionPenalty = scoreRepetitionPenalty(record)
-
-  if (organizationType === 0 && urls === 0 && location === 0 && foundedDate === 0) {
-    testSignals.push('organization metadata is minimal')
-  }
+  const websitePresent = scoreWebsitePresent(record.profileWebsite)
+  const websiteResolves = scoreWebsiteResolves(record.profileWebsite, testSignals)
+  const websiteMatchesName = scoreWebsiteMatchesName(record.displayName, record.profileWebsite)
+  const organizationUrlsPresent = scoreOrganizationUrlsPresent(record.urls)
+  const organizationUrlsResolve = scoreOrganizationUrlsResolve(record.urls, testSignals)
+  const locationValid = scoreLocation(record.location)
+  const foundedDateValid = scoreFoundedDateValid(record.foundedDate, testSignals)
+  const foundedDateAge = scoreFoundedDateAge(record.foundedDate)
+  const avatar = scoreAvatar(record.hasAvatar)
+  const banner = scoreBanner(record.hasBanner)
 
   const breakdown: ScoreBreakdown = {
+    displayName,
+    description,
     organizationType,
-    urls,
-    location,
-    foundedDate,
-    createdAt,
-    titleQuality: Math.min(15, organizationType),
-    shortDescQuality: Math.min(15, urls),
-    descriptionQuality: Math.min(20, foundedDate),
-    hasImage: Math.min(10, location),
-    hasWorkScope: Math.min(10, createdAt),
-    contributorQuality: organizationType > 0 && urls > 0 ? 10 : 0,
-    hasLocations: Math.min(5, location),
-    hasDateRange: foundedDate > 0 ? 5 : 0,
-    hasRights: createdAt > 0 ? 5 : 0,
-    repetitionPenalty,
-    repetitionFlags: repetitionPenalty,
+    websitePresent,
+    websiteResolves,
+    websiteMatchesName,
+    organizationUrlsPresent,
+    organizationUrlsResolve,
+    locationValid,
+    foundedDateValid,
+    foundedDateAge,
+    avatar,
+    banner,
   }
 
-  const totalScore = Math.min(100, Math.max(0, organizationType + urls + location + foundedDate + createdAt + repetitionPenalty))
+  const totalScore = Math.min(100, Object.values(breakdown).reduce((sum, value) => sum + value, 0))
   const tier = tierForScore(totalScore, testSignals)
 
   return {
