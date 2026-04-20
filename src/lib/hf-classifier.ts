@@ -1,7 +1,6 @@
 import { HfInference } from '@huggingface/inference'
 import * as config from './config'
 import { HF_POSITIVE_LABEL, updateActivityHfFields, getActivityByDidRkey, getHfClassifiedNonFlagged } from './db'
-import { tierForScore } from './scorer'
 import { updateActivity } from './db'
 
 export interface ContentClassification {
@@ -90,25 +89,17 @@ function reclassifyWithHfSignal(did: string, rkey: string, classification: Conte
     existingSignals = []
   }
 
-  const label = classification.label
-  const scorePct = (classification.score * 100).toFixed(0)
-  const updatedSignals = [...existingSignals, `hf-flagged: ${label} (${scorePct}%)`]
-  const newTier = tierForScore(row.score, updatedSignals)
+  const signal = authenticitySignalForClassification(classification)
+  const updatedSignals = signal && !existingSignals.includes(signal)
+    ? [...existingSignals, signal]
+    : existingSignals
 
   updateActivity(did, rkey, {
     score: row.score,
-    tier: newTier,
+    tier: row.tier,
     breakdown: row.breakdown,
     testSignals: JSON.stringify(updatedSignals),
   })
-
-  // Update ATProto label to match the new tier
-  if (_onReclassify && newTier !== row.tier) {
-    const uri = `at://${did}/${config.ACTIVITY_COLLECTION}/${rkey}`
-    _onReclassify(uri, newTier).catch(err => {
-      console.warn('[hf-classifier] failed to update ATProto label:', err instanceof Error ? err.message : err)
-    })
-  }
 }
 
 let hf: HfInference | null = null
@@ -169,11 +160,17 @@ export function isLowQualityContent(classification: ContentClassification): bool
   return classification.label !== PRIMARY_LABEL
 }
 
-// Re-evaluate existing HF classifications against current thresholds.
-// Called on startup to catch records that were classified before a threshold change.
+function authenticitySignalForClassification(classification: ContentClassification): string | null {
+  if (!isLowQualityContent(classification)) return null
+
+  const scorePct = (classification.score * 100).toFixed(0)
+  return `hf-flagged: ${classification.label} (${scorePct}%)`
+}
+
+// Re-attach HF authenticity signals to existing classified rows on startup.
 export function reevaluateExistingClassifications(): number {
   const candidates = getHfClassifiedNonFlagged()
-  let reclassified = 0
+  let updated = 0
   for (const { did, rkey, hfLabel, hfScore } of candidates) {
     const classification: ContentClassification = {
       label: hfLabel,
@@ -182,8 +179,8 @@ export function reevaluateExistingClassifications(): number {
     }
     if (isLowQualityContent(classification)) {
       reclassifyWithHfSignal(did, rkey, classification)
-      reclassified++
+      updated++
     }
   }
-  return reclassified
+  return updated
 }

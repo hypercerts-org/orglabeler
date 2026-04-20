@@ -12,14 +12,14 @@ const CRITERIA: Array<{ label: string; field: keyof ScoreBreakdownType; max: num
   { label: 'Display name', field: 'displayName', max: COMPLETENESS_WEIGHTS.displayName },
   { label: 'Description', field: 'description', max: COMPLETENESS_WEIGHTS.description },
   { label: 'Organization type', field: 'organizationType', max: COMPLETENESS_WEIGHTS.organizationType },
-  { label: 'Website present', field: 'websitePresent', max: COMPLETENESS_WEIGHTS.websitePresent },
-  { label: 'Website resolves', field: 'websiteResolves', max: COMPLETENESS_WEIGHTS.websiteResolves },
-  { label: 'Website matches name', field: 'websiteMatchesName', max: COMPLETENESS_WEIGHTS.websiteMatchesName },
-  { label: 'Organization URLs present', field: 'organizationUrlsPresent', max: COMPLETENESS_WEIGHTS.organizationUrlsPresent },
+  { label: 'Profile website present', field: 'websitePresent', max: COMPLETENESS_WEIGHTS.websitePresent },
+  { label: 'Profile website resolves', field: 'websiteResolves', max: COMPLETENESS_WEIGHTS.websiteResolves },
+  { label: 'Profile website matches name', field: 'websiteMatchesName', max: COMPLETENESS_WEIGHTS.websiteMatchesName },
+  { label: 'Organization URLs (small bonus)', field: 'organizationUrlsPresent', max: COMPLETENESS_WEIGHTS.organizationUrlsPresent },
   { label: 'Organization URLs resolve', field: 'organizationUrlsResolve', max: COMPLETENESS_WEIGHTS.organizationUrlsResolve },
   { label: 'Location valid', field: 'locationValid', max: COMPLETENESS_WEIGHTS.locationValid },
   { label: 'Founded date valid', field: 'foundedDateValid', max: COMPLETENESS_WEIGHTS.foundedDateValid },
-  { label: 'Founded date age', field: 'foundedDateAge', max: COMPLETENESS_WEIGHTS.foundedDateAge },
+  { label: 'Founded date age bonus', field: 'foundedDateAge', max: COMPLETENESS_WEIGHTS.foundedDateAge },
   { label: 'Avatar', field: 'avatar', max: COMPLETENESS_WEIGHTS.avatar },
   { label: 'Banner', field: 'banner', max: COMPLETENESS_WEIGHTS.banner },
 ]
@@ -34,6 +34,10 @@ function getBarColor(ratio: number): string {
 export function ScoreBreakdown({ breakdown, testSignals }: ScoreBreakdownProps) {
   return (
     <div>
+      <p className='mb-2 text-[11px] text-muted-foreground'>
+        Authenticity gate failures are checked before completeness scoring.
+      </p>
+
       {CRITERIA.map(({ label, field, max }) => {
         const value = breakdown[field] ?? 0
         const ratio = max > 0 ? value / max : 0
@@ -84,7 +88,7 @@ export function ScoreBreakdown({ breakdown, testSignals }: ScoreBreakdownProps) 
               <circle cx='6' cy='8.5' r='0.5' fill='currentColor' className='text-rose-700 dark:text-rose-400' />
             </svg>
             <span className='text-[11px] font-medium text-rose-700 dark:text-rose-400'>
-              Test signals detected
+              Authenticity gate failed
             </span>
           </div>
           {testSignals.map((signal, i) => (

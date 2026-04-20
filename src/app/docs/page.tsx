@@ -7,7 +7,7 @@ const SCORING_CRITERIA = [
   {
     label: 'Display name',
     points: COMPLETENESS_WEIGHTS.displayName,
-    description: 'Awards points when the display name comes from the profile or organization type instead of the DID fallback.',
+    description: 'Awards points when the display name comes from profile data or organization type instead of the DID fallback.',
   },
   {
     label: 'Description',
@@ -20,29 +20,29 @@ const SCORING_CRITERIA = [
     description: 'Awards partial points for only `other`, full points for a specific organization type.',
   },
   {
-    label: 'Website present',
+    label: 'Profile website present',
     points: COMPLETENESS_WEIGHTS.websitePresent,
-    description: 'Awards points when the profile website is filled in.',
+    description: 'Awards points when profile.website is filled in.',
   },
   {
-    label: 'Website resolves',
+    label: 'Profile website resolves',
     points: COMPLETENESS_WEIGHTS.websiteResolves,
-    description: 'Awards points when the profile website is a valid public HTTP(S) URL.',
+    description: 'Awards points when profile.website is a valid public HTTP(S) URL.',
   },
   {
-    label: 'Website matches name',
+    label: 'Profile website matches name',
     points: COMPLETENESS_WEIGHTS.websiteMatchesName,
-    description: 'Awards points when the display name matches the website domain stem.',
+    description: 'Awards points when the display name matches the profile.website domain stem.',
   },
   {
-    label: 'Organization URLs present',
+    label: 'Organization URLs (small bonus)',
     points: COMPLETENESS_WEIGHTS.organizationUrlsPresent,
-    description: 'Awards points when the organization has at least one URL.',
+    description: 'Awards a small amount when the organization has at least one URL.',
   },
   {
     label: 'Organization URLs resolve',
     points: COMPLETENESS_WEIGHTS.organizationUrlsResolve,
-    description: 'Awards points when at least one organization URL is a valid public HTTP(S) URL.',
+    description: 'Awards a small amount when at least one organization URL is a valid public HTTP(S) URL.',
   },
   {
     label: 'Location valid',
@@ -55,7 +55,7 @@ const SCORING_CRITERIA = [
     description: 'Awards points for a valid, non-future foundedDate.',
   },
   {
-    label: 'Founded date age',
+    label: 'Founded date age bonus',
     points: COMPLETENESS_WEIGHTS.foundedDateAge,
     description: 'Awards bonus points when the founded date is at least a year old.',
   },
@@ -155,9 +155,9 @@ export default function DocsPage() {
           <li className='flex gap-3'>
             <span className='font-[family-name:var(--font-syne)] font-bold text-foreground shrink-0'>3.</span>
             <span>
-              The scoring engine evaluates merged profile + organization data against a 100-point completeness rubric.
-              Test signals are checked first — any record that looks like placeholder data is labeled
-              <ScoreBadge tier='likely-test' /> regardless of its numeric score.
+              The scoring engine runs an authenticity gate first. Any record that looks like placeholder or invalid
+              data is labeled <ScoreBadge tier='likely-test' /> before completeness scoring begins. Passing records
+              then receive the 100-point completeness score.
             </span>
           </li>
           <li className='flex gap-3'>
@@ -175,8 +175,8 @@ export default function DocsPage() {
           Scoring criteria
         </h2>
         <p className='text-sm text-muted-foreground'>
-          Each organization record is evaluated on 13 criteria for a maximum of 100 points. Profile data is folded
-          into the score, but labels stay attached to the organization record URI.
+          Each passing organization record is evaluated on 13 completeness criteria for a maximum of 100 points. The
+          authenticity gate runs first, and labels stay attached to the organization record URI.
         </p>
         <div className='border border-border rounded-lg bg-card overflow-hidden'>
           <table className='w-full text-sm'>
@@ -218,13 +218,13 @@ export default function DocsPage() {
         </div>
 
         <h3 className='font-[family-name:var(--font-syne)] text-sm font-bold mt-4'>
-          Test signals
+          Authenticity gate
         </h3>
         <p className='text-sm text-muted-foreground'>
-          Matching any test signal forces <ScoreBadge tier='likely-test' />. There are no separate numeric deductions.
+          Matching any gate failure forces <ScoreBadge tier='likely-test' />. There are no separate numeric deductions.
         </p>
         <div className='border border-border rounded-lg bg-card p-4 text-xs text-muted-foreground space-y-1'>
-          <p className='font-medium text-foreground text-xs'>Common patterns</p>
+          <p className='font-medium text-foreground text-xs'>Common failure patterns</p>
           <ul className='space-y-1 pl-3'>
             <li>• Common junk values: <span className='font-mono bg-secondary rounded px-1'>test</span>, <span className='font-mono bg-secondary rounded px-1'>asdf</span>, <span className='font-mono bg-secondary rounded px-1'>lorem ipsum</span>, <span className='font-mono bg-secondary rounded px-1'>placeholder</span>, <span className='font-mono bg-secondary rounded px-1'>delete me</span>, <span className='font-mono bg-secondary rounded px-1'>ignore</span>, <span className='font-mono bg-secondary rounded px-1'>todo</span>, <span className='font-mono bg-secondary rounded px-1'>foo</span>, <span className='font-mono bg-secondary rounded px-1'>bar</span>, <span className='font-mono bg-secondary rounded px-1'>abc</span>, <span className='font-mono bg-secondary rounded px-1'>wip</span>, <span className='font-mono bg-secondary rounded px-1'>sample</span>, and <span className='font-mono bg-secondary rounded px-1'>example</span>.</li>
             <li>• Empty-style values: <span className='font-mono bg-secondary rounded px-1'>n/a</span>, <span className='font-mono bg-secondary rounded px-1'>none</span>, <span className='font-mono bg-secondary rounded px-1'>null</span>, <span className='font-mono bg-secondary rounded px-1'>undefined</span>, <span className='font-mono bg-secondary rounded px-1'>blank</span>, <span className='font-mono bg-secondary rounded px-1'>draft</span>, <span className='font-mono bg-secondary rounded px-1'>temp</span>, and <span className='font-mono bg-secondary rounded px-1'>tmp</span>.</li>
@@ -238,7 +238,7 @@ export default function DocsPage() {
           Quality tiers
         </h2>
         <p className='text-sm text-muted-foreground'>
-          Scores map to three tiers. Test signals override the numeric score and always produce a
+          Scores map to three tiers. Authenticity gate failures override the numeric score and always produce a
           <ScoreBadge tier='likely-test' /> label.
         </p>
         <div className='grid gap-3 sm:grid-cols-2'>
@@ -255,8 +255,8 @@ export default function DocsPage() {
             },
             {
               tier: 'likely-test' as const,
-              range: '0 – 34 or test signals',
-              detail: 'Contains test or placeholder data, or falls below the standard threshold.',
+              range: '0 – 34 or gate failures',
+              detail: 'Contains authenticity gate failures, or falls below the standard threshold.',
             },
           ].map(({ tier, range, detail }) => (
             <div key={tier} className='border border-border rounded-lg bg-card p-4 space-y-2'>
@@ -269,7 +269,7 @@ export default function DocsPage() {
           ))}
         </div>
         <div className='border border-border rounded-lg bg-card p-4 text-xs text-muted-foreground space-y-1'>
-          <p className='font-medium text-foreground text-xs'>Test signal patterns</p>
+          <p className='font-medium text-foreground text-xs'>Authenticity gate failure patterns</p>
           <p>
             Records are automatically flagged as <ScoreBadge tier='likely-test' /> when organization
             metadata matches common junk values such as <span className='font-mono bg-secondary rounded px-1'>test</span>,{' '}
