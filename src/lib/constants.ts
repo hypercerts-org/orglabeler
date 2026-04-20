@@ -64,5 +64,22 @@ export const TEST_PATTERNS: RegExp[] = [
   /^\d+$/,
 ]
 
+export const AUTHENTICITY_TEXT_PATTERNS: RegExp[] = [
+  ...TEST_PATTERNS,
+
+  // Additional placeholder values commonly used in profile metadata.
+  /^unknown$/i,
+  /^placeholder$/i,
+  /^dummy$/i,
+  /^mock$/i,
+  /^sample$/i,
+  /^tbd$/i,
+  /^coming soon$/i,
+  /^not set$/i,
+  /^not specified$/i,
+  /^to be determined$/i,
+  /^unlisted$/i,
+]
+
 export const LABEL_LIMIT = 1
 export const QUALITY_LABEL_IDENTIFIERS: string[] = ['likely-test', 'standard', 'high-quality']
