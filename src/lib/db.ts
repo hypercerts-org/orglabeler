@@ -40,6 +40,17 @@ interface SnapshotRow {
   updated_at: string
 }
 
+interface PendingOrganizationDeleteRow {
+  did: string
+  record_uri: string
+  rkey: string
+  attempts: number
+  last_attempt_at: string | null
+  last_error: string | null
+  created_at: string
+  updated_at: string
+}
+
 type ActivityLogInput = {
   did: string
   rkey: string
@@ -102,6 +113,19 @@ function createSnapshotTables(db: Database.Database): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_organization_snapshots_updated_at ON organization_snapshots(updated_at);
+
+    CREATE TABLE IF NOT EXISTS pending_organization_deletes (
+      did TEXT PRIMARY KEY,
+      record_uri TEXT NOT NULL,
+      rkey TEXT NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      last_attempt_at TEXT,
+      last_error TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_pending_organization_deletes_updated_at ON pending_organization_deletes(updated_at);
   `)
 }
 
@@ -268,6 +292,46 @@ export function deleteOrganizationRecordState(did: string, rkey: string): void {
   const db = getDb()
   db.prepare('DELETE FROM organization_snapshots WHERE did = ?').run(did)
   db.prepare('DELETE FROM activities WHERE did = ? AND rkey = ?').run(did, rkey)
+}
+
+export function upsertPendingOrganizationDelete(did: string, rkey: string, recordUri: string): void {
+  const db = getDb()
+  db.prepare(`
+    INSERT INTO pending_organization_deletes
+      (did, record_uri, rkey, attempts, last_attempt_at, last_error, created_at, updated_at)
+    VALUES
+      (@did, @recordUri, @rkey, 0, NULL, NULL, datetime('now'), datetime('now'))
+    ON CONFLICT(did) DO UPDATE SET
+      record_uri = excluded.record_uri,
+      rkey = excluded.rkey,
+      updated_at = excluded.updated_at
+  `).run({ did, rkey, recordUri })
+}
+
+export function recordPendingOrganizationDeleteAttempt(did: string, errorMessage?: string | null): void {
+  const db = getDb()
+  db.prepare(`
+    UPDATE pending_organization_deletes
+    SET attempts = attempts + 1,
+        last_attempt_at = datetime('now'),
+        last_error = @lastError,
+        updated_at = datetime('now')
+    WHERE did = @did
+  `).run({ did, lastError: errorMessage ?? null })
+}
+
+export function getPendingOrganizationDeletes(): Array<PendingOrganizationDeleteRow> {
+  const db = getDb()
+  return db.prepare(`
+    SELECT did, record_uri, rkey, attempts, last_attempt_at, last_error, created_at, updated_at
+    FROM pending_organization_deletes
+    ORDER BY updated_at ASC
+  `).all() as Array<PendingOrganizationDeleteRow>
+}
+
+export function deletePendingOrganizationDelete(did: string): void {
+  const db = getDb()
+  db.prepare('DELETE FROM pending_organization_deletes WHERE did = ?').run(did)
 }
 
 // Upsert on did+rkey. Preserves existing hf_label/hf_score when the new values are null.

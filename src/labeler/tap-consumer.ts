@@ -11,9 +11,13 @@ import {
   getAllOrganizationSnapshots,
   deleteProfileSnapshot,
   deleteOrganizationRecordState,
+  deletePendingOrganizationDelete,
   clearActivityHfFields,
+  getPendingOrganizationDeletes,
+  recordPendingOrganizationDeleteAttempt,
   upsertProfileSnapshot,
   upsertOrganizationSnapshot,
+  upsertPendingOrganizationDelete,
 } from '../lib/db'
 import { enqueueClassification, reevaluateExistingClassifications } from '../lib/hf-classifier'
 import { applyQualityLabel, fetchCurrentLabels, negateQualityLabels } from './server'
@@ -130,6 +134,26 @@ export async function reconcileStoredOrganizationSnapshots(): Promise<number> {
     await recomputeLabeledOrganizationRow(snapshot.did)
   }
 
+  const pendingDeletes = getPendingOrganizationDeletes()
+  for (const pendingDelete of pendingDeletes) {
+    try {
+      logger.info(
+        { did: pendingDelete.did, rkey: pendingDelete.rkey, uri: pendingDelete.record_uri },
+        'Retrying pending organization label negation before cleanup',
+      )
+      await negateQualityLabels(pendingDelete.record_uri)
+      deleteOrganizationRecordState(pendingDelete.did, pendingDelete.rkey)
+      deletePendingOrganizationDelete(pendingDelete.did)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      recordPendingOrganizationDeleteAttempt(pendingDelete.did, message)
+      logger.error(
+        { err, did: pendingDelete.did, rkey: pendingDelete.rkey, uri: pendingDelete.record_uri },
+        'Pending organization delete negation failed; will retry later',
+      )
+    }
+  }
+
   if (snapshots.length > 0) {
     logger.info({ count: snapshots.length }, 'Reconciled local organization snapshots on startup')
   } else {
@@ -143,11 +167,15 @@ async function handleOrganizationDelete(did: string, rkey: string): Promise<void
   const organization = getOrganizationSnapshot(did)
   const recordUri = organization?.recordUri ?? `at://${did}/${ORGANIZATION_COLLECTION}/${rkey}`
 
-  deleteOrganizationRecordState(did, rkey)
+  upsertPendingOrganizationDelete(did, rkey, recordUri)
 
   try {
     await negateQualityLabels(recordUri)
+    deleteOrganizationRecordState(did, rkey)
+    deletePendingOrganizationDelete(did)
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    recordPendingOrganizationDeleteAttempt(did, message)
     logger.error({ err, did, rkey, uri: recordUri }, 'Error negating organization labels after delete')
   }
 }
