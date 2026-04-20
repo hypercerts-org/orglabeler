@@ -1,5 +1,6 @@
 import type { Main as OrganizationRecordBase } from '../lexicons/app/certified/actor/organization.defs'
 import type { Main as ProfileRecordBase } from '../lexicons/app/certified/actor/profile.defs'
+import type { MergedDisplayNameSource, ProfileDisplayNamePresence, ProfileIngestMode } from './scoring-input'
 
 // Organization record — re-exported from generated lexicon types
 // The canonical shape is defined in lexicons/app/certified/actor/organization.json
@@ -16,6 +17,9 @@ export interface MergedActorInput {
 
 export interface MergedActorOutput extends MergedActorInput {
   displayName: string
+  displayNameSource: MergedDisplayNameSource
+  profileIngestMode: ProfileIngestMode
+  profileDisplayNamePresence: ProfileDisplayNamePresence
   hasProfileDescription: boolean
   hasWebsite: boolean
   hasAvatar: boolean

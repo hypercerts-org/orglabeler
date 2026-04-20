@@ -2,6 +2,8 @@ import type { Main as OrganizationRecord } from '../lexicons/app/certified/actor
 import type { Main as ProfileRecord } from '../lexicons/app/certified/actor/profile.defs'
 
 export type MergedDisplayNameSource = 'profile' | 'did'
+export type ProfileIngestMode = 'strict' | 'fallback' | 'missing'
+export type ProfileDisplayNamePresence = 'present' | 'absent'
 
 export interface MergedOrganizationUrlItem {
   url: string
@@ -12,6 +14,8 @@ export interface MergedScoringInput {
   did: string
   displayName: string
   displayNameSource: MergedDisplayNameSource
+  profileIngestMode: ProfileIngestMode
+  profileDisplayNamePresence: ProfileDisplayNamePresence
   profileDisplayName: string | null
   profileDescription: string | null
   profileWebsite: string | null
@@ -54,6 +58,12 @@ export function buildMergedScoringInput(source: MergedScoringInputSource): Merge
   const profileDisplayName = normalizeText(source.profile?.displayName) || null
   const profileDescription = normalizeText(source.profile?.description) || null
   const profileWebsite = normalizeText(source.profile?.website) || null
+  const profileIngestMode: ProfileIngestMode = source.profile
+    ? (source.profileValidationNotes?.length ? 'fallback' : 'strict')
+    : 'missing'
+  const profileDisplayNamePresence: ProfileDisplayNamePresence = profileDisplayName
+    ? 'present'
+    : 'absent'
   const validationNotes = (source.profileValidationNotes ?? [])
     .map(normalizeText)
     .filter(note => note.length > 0)
@@ -76,6 +86,8 @@ export function buildMergedScoringInput(source: MergedScoringInputSource): Merge
     did: source.did,
     displayName,
     displayNameSource,
+    profileIngestMode,
+    profileDisplayNamePresence,
     profileDisplayName,
     profileDescription,
     profileWebsite,

@@ -25,7 +25,7 @@ import { getMergedActorDisplay } from '../lib/actor-display'
 import { buildMergedScoringInput } from '../lib/scoring-input'
 import { salvageProfileFallback } from '../lib/profile-fallback'
 import logger from './logger'
-import type { ActivityRecord, ProfileSnapshot, RuntimeLabelTier } from '../lib/types'
+import type { ActivityRecord, ProfileFallbackProfile, ProfileSnapshot, RuntimeLabelTier } from '../lib/types'
 import { $safeParse as $safeParseProfile } from '../lexicons/app/certified/actor/profile.defs'
 import { $safeParse } from '../lexicons/app/certified/actor/organization.defs'
 
@@ -62,6 +62,22 @@ function summarizeValidationNotes(validationNotes: string[]): { noteCount: numbe
   return {
     noteCount,
     noteSummary: `${validationNotes.slice(0, 2).join('; ')}; +${noteCount - 2} more`,
+  }
+}
+
+function summarizeFallbackPreservation(profile: ProfileFallbackProfile | null): {
+  displayName: boolean
+  description: boolean
+  website: boolean
+  avatar: boolean
+  banner: boolean
+} {
+  return {
+    displayName: Boolean(profile?.displayName),
+    description: Boolean(profile?.description),
+    website: Boolean(profile?.website),
+    avatar: Boolean(profile?.avatar),
+    banner: Boolean(profile?.banner),
   }
 }
 
@@ -106,7 +122,7 @@ function refreshHfClassification(did: string): void {
   enqueueClassification(text, did, organization.rkey)
 }
 
-export async function recomputeLabeledOrganizationRow(did: string): Promise<void> {
+export async function recomputeLabeledOrganizationRow(did: string, source: 'live' | 'startup' = 'live'): Promise<void> {
   const organization = getOrganizationSnapshot(did)
   if (!organization) return
 
@@ -122,6 +138,19 @@ export async function recomputeLabeledOrganizationRow(did: string): Promise<void
     profile: profile?.payload ?? null,
     organization: organization.payload,
   })
+
+  logger.info(
+    {
+      did,
+      rkey: organization.rkey,
+      source,
+      profileIngestMode: merged.profileIngestMode,
+      profileDisplayNamePresence: merged.profileDisplayNamePresence,
+      displayNameSource: merged.displayNameSource,
+      displayName: merged.displayName,
+    },
+    'Scoring organization row',
+  )
 
   try {
     const result = await scoreActivity(scoringInput)
@@ -140,8 +169,8 @@ export async function recomputeLabeledOrganizationRow(did: string): Promise<void
         labeledAt: new Date().toISOString(),
       })
       logger.info(
-        { did, rkey: organization.rkey, score: result.totalScore, tier: result.tier },
-        `Scored merged organization row: ${result.totalScore}/100 → ${result.tier}`
+        { did, rkey: organization.rkey, source, score: result.totalScore, tier: result.tier },
+        `Scored merged organization row: ${result.totalScore}/100 → ${result.tier}`,
       )
     } catch (err) {
       logger.error({ err, did, rkey: organization.rkey }, 'Error logging organization row')
@@ -163,7 +192,7 @@ export async function reconcileStoredOrganizationSnapshots(): Promise<number> {
   const snapshots = getAllOrganizationSnapshots()
 
   for (const snapshot of snapshots) {
-    await recomputeLabeledOrganizationRow(snapshot.did)
+    await recomputeLabeledOrganizationRow(snapshot.did, 'startup')
   }
 
   const pendingDeletes = getPendingOrganizationDeletes()
@@ -245,6 +274,8 @@ indexer.record(async (evt) => {
 
     const parsed = $safeParseProfile(evt.record)
     if (parsed.success) {
+      const profileDisplayNamePresence = parsed.value.displayName?.trim() ? 'present' : 'absent'
+
       upsertProfileSnapshot({
         did: evt.did,
         recordUri: `at://${evt.did}/${PROFILE_COLLECTION}/${evt.rkey}`,
@@ -254,14 +285,21 @@ indexer.record(async (evt) => {
         updatedAt: new Date().toISOString(),
       })
 
-      logger.info({ ...eventMeta, ingestMode: 'strict' }, 'Stored strict profile snapshot')
+      logger.info(
+        { ...eventMeta, ingestMode: 'strict', profileDisplayNamePresence },
+        'Stored strict profile snapshot',
+      )
     } else {
+      const fallback = salvageProfileFallback(evt.record)
+      const preserved = fallback.mode === 'fallback'
+        ? summarizeFallbackPreservation(fallback.profile)
+        : summarizeFallbackPreservation(null)
+
       logger.warn(
         { ...eventMeta, reason: parsed.reason?.message },
         'Profile record failed strict lexicon validation; attempting fallback'
       )
 
-      const fallback = salvageProfileFallback(evt.record)
       if (fallback.mode === 'unusable') {
         const { noteCount, noteSummary } = summarizeValidationNotes(fallback.validationNotes)
 
@@ -269,10 +307,12 @@ indexer.record(async (evt) => {
           {
             ...eventMeta,
             ingestMode: 'fallback',
+            fallbackSucceeded: false,
             reason: parsed.reason?.message,
             noteCount,
             noteSummary,
             fallbackReason: fallback.validationNotes[0],
+            preserved,
           },
           'Profile record was unusable after fallback; skipping',
         )
@@ -294,8 +334,12 @@ indexer.record(async (evt) => {
         {
           ...eventMeta,
           ingestMode: 'fallback',
+          fallbackSucceeded: true,
+          reason: parsed.reason?.message,
+          profileDisplayNamePresence: fallback.profile.displayName ? 'present' : 'absent',
           noteCount,
           noteSummary,
+          preserved,
         },
         'Stored fallback profile snapshot'
       )
