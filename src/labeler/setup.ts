@@ -3,6 +3,7 @@
 // Or: npm run setup -- satyam2.climateai.org mypassword https://labeler.example.com
 
 import { plcRequestToken, plcSetupLabeler, declareLabeler } from "@skyware/labeler/scripts"
+import 'dotenv/config'
 import { LABELS } from "../lib/constants"
 import { resolvePds } from "../lib/resolve-pds"
 import * as readline from "node:readline"

@@ -2,6 +2,9 @@ node_modules
 .next
 .env
 *.db
+*.db-wal
+*.db-shm
 cursor.txt
 *.log
 dist/
+tsconfig.tsbuildinfo
