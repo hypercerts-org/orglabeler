@@ -1,6 +1,6 @@
 import 'dotenv/config'
 import fs from 'node:fs'
-import { HOST, LABELER_PORT, METRICS_PORT, TAP_URL, APP_DB_PATHS } from '../lib/config'
+import { HOST, LABELER_PORT, METRICS_PORT, TAP_URL, APP_DB_PATHS, TAP_ADMIN_PASSWORD } from '../lib/config'
 import { getPendingActivities, deleteActivity } from '../lib/db'
 import { labelerServer, negateAllDIDLabels, applyQualityLabel } from './server'
 import {
@@ -19,10 +19,16 @@ let shuttingDown = false
 async function waitForTap(url: string, maxAttempts = 30, intervalMs = 1000): Promise<void> {
   for (let i = 0; i < maxAttempts; i++) {
     try {
-      const res = await fetch(`${url}/health`)
-      // Any HTTP response (including 401 when TAP_ADMIN_PASSWORD is set)
-      // means Tap is up and listening. Only network errors mean it isn't ready.
-      if (res.status < 500) {
+      const authHeader = TAP_ADMIN_PASSWORD
+        ? { Authorization: `Basic ${Buffer.from(`admin:${TAP_ADMIN_PASSWORD}`).toString('base64')}` }
+        : undefined
+      const res = await fetch(`${url}/health`, authHeader ? { headers: authHeader } : undefined)
+      if (TAP_ADMIN_PASSWORD) {
+        if (res.ok) {
+          logger.info({ status: res.status }, 'Tap is healthy')
+          return
+        }
+      } else if (res.status < 500) {
         logger.info({ status: res.status }, 'Tap is healthy')
         return
       }
