@@ -51,7 +51,7 @@ npm run dev            # Dashboard on http://localhost:3000
 npm run dev:labeler    # Labeler backend on port 4100 + metrics on 4101
 ```
 
-Tap runs as a separate service. Point `TAP_URL` at that service's WebSocket URL, and optionally set `TAP_HEALTH_URL` to the HTTP(S) base URL used for health checks. If `TAP_HEALTH_URL` is unset, the app derives it from `TAP_URL`.
+Tap runs as a separate service. Point `TAP_URL` at that service's URL; there is no localhost fallback and the app will not start without it.
 
 ## Architecture
 
@@ -105,15 +105,14 @@ Test detection: regex patterns catch common placeholder strings (`test`, `asdf`,
 | `HOST` | 127.0.0.1 | Labeler server bind address |
 | `LABELER_PORT` | 4100 | Labeler server port |
 | `METRICS_PORT` | 4101 | Prometheus metrics port |
-| `TAP_URL` | required | WebSocket URL of the separate Tap service |
-| `TAP_HEALTH_URL` | derived from `TAP_URL` | Optional HTTP(S) base URL for Tap health/admin checks |
+| `TAP_URL` | required | URL of the separate Tap service (no localhost default) |
 | `ACTIVITY_DB_PATH` | `activity-log.db` | Activity log database path |
 
-Tap-specific settings belong on the Tap service, not the app service. This repo needs `TAP_URL` for the Tap client and uses `TAP_HEALTH_URL` (explicit or derived) for startup health checks; set `TAP_ADMIN_PASSWORD` on the Tap service if you use Tap admin auth.
+Tap-specific settings belong on the Tap service, not the app service. This repo only needs `TAP_URL` here; set `TAP_ADMIN_PASSWORD` on the Tap service if you use Tap admin auth.
 
 ## Production Deployment
 
-Deploy the app service and Tap as separate services. The app service runs the dashboard plus labeler backend and connects to Tap over `TAP_URL` (WebSocket), while startup health checks use `TAP_HEALTH_URL` or the value derived from `TAP_URL`; Tap owns its own database, volume, lifecycle, and any Tap-specific auth settings.
+Deploy the app service and Tap as separate services. The app service runs the dashboard plus labeler backend and connects to Tap over `TAP_URL`; Tap owns its own database, volume, lifecycle, and any Tap-specific auth settings.
 
 The labeler backend (port 4100) must be accessible via HTTPS for AT Protocol clients. Use a reverse proxy:
 

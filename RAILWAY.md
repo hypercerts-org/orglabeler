@@ -5,7 +5,7 @@ This guide assumes **two Railway services**:
 - the **app service** (Next.js dashboard + labeler backend)
 - a separate **Tap service** with its own database and volume
 
-The app service connects to Tap over `TAP_URL` and uses `TAP_HEALTH_URL` (explicit or derived) for readiness checks.
+The app service connects to Tap over `TAP_URL`.
 
 ---
 
@@ -36,8 +36,7 @@ Required:
 | `DID` | Labeler DID |
 | `SIGNING_KEY` | Labeler private key |
 | `LABELER_ENDPOINT` | Public HTTPS URL of the app service |
-| `TAP_URL` | Required WebSocket URL of the separate Tap service; no localhost default |
-| `TAP_HEALTH_URL` | Optional HTTP(S) base URL for Tap health/admin checks |
+| `TAP_URL` | Required URL of the separate Tap service; no localhost default |
 
 Usually needed for setup/sync:
 
@@ -96,18 +95,17 @@ Mount a separate persistent volume for the Tap service database files and their 
 | `4101` | App service | Internal metrics only |
 | `2480` | Tap service | Tap HTTP endpoint |
 
-The app service must be able to reach `TAP_URL`; the Tap service does not need to live inside the app container. If you don't set `TAP_HEALTH_URL`, `TAP_URL` must be convertible to HTTP(S) for health checks.
+The app service must be able to reach `TAP_URL`; the Tap service does not need to live inside the app container.
 
 ---
 
 ## 5) Deployment flow
 
 1. Deploy Tap and confirm it is healthy.
-2. Set the app service `TAP_URL` to the Tap service WebSocket URL.
-3. Set `TAP_HEALTH_URL` only if the health endpoint uses a separate HTTP(S) base URL.
-4. Set the app service database paths to the mounted app volume.
-5. Run `npm run setup` locally once to create the labeler credentials if needed.
-6. Deploy the app service.
+2. Set the app service `TAP_URL` to the Tap service URL.
+3. Set the app service database paths to the mounted app volume.
+4. Run `npm run setup` locally once to create the labeler credentials if needed.
+5. Deploy the app service.
 
 ---
 
@@ -115,8 +113,7 @@ The app service must be able to reach `TAP_URL`; the Tap service does not need t
 
 ### App cannot reach Tap
 
-- Confirm `TAP_URL` points to the Tap service WebSocket URL, not `localhost`
-- Confirm `TAP_HEALTH_URL` is set or derivable from `TAP_URL`
+- Confirm `TAP_URL` points to the Tap service, not `localhost`
 - Confirm the Tap service is running and reachable from the app service
 - Check Tap logs for startup or SQLite errors
 

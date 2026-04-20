@@ -5,7 +5,7 @@ This repository deploys the **Certified Organization Labeler** as two services:
 - **App service**: Next.js dashboard + labeler process
 - **Tap service**: separate Tap instance with its own SQLite file and volume
 
-The app service connects to Tap over `TAP_URL` and checks health over `TAP_HEALTH_URL` (or a value derived from `TAP_URL`).
+The app service connects to Tap over `TAP_URL`.
 
 ## Build and start
 
@@ -27,7 +27,7 @@ At runtime, the labeler process starts:
 2. the Prometheus metrics server on `METRICS_PORT` (default `4101`)
 3. the Tap consumer that scores incoming records and writes to SQLite
 
-Tap is a separate service. The labeler process connects to it via `TAP_URL` instead of launching it locally, and startup should fail if `TAP_URL` is missing or cannot be mapped to an HTTP(S) health URL.
+Tap is a separate service. The labeler process connects to it via `TAP_URL` instead of launching it locally, and startup should fail if `TAP_URL` is missing.
 
 The dashboard proxies `/xrpc/*` requests to the local labeler server at `http://127.0.0.1:LABELER_PORT`.
 
@@ -50,8 +50,7 @@ Use these with `npm run setup` and `npm run set-labels` when registering the lab
 
 ### Required for the app service to reach Tap
 
-- `TAP_URL` — required WebSocket URL of the separate Tap service
-- `TAP_HEALTH_URL` — optional HTTP(S) base URL for Tap health/admin checks; derived from `TAP_URL` when unset
+- `TAP_URL` — required URL of the separate Tap service
 
 ### SQLite paths
 
@@ -102,5 +101,5 @@ Also persist the `-wal` and `-shm` companions that SQLite may create beside each
 
 - Run a single replica only for each service; SQLite state is not safe to share across multiple hosts.
 - Expose the dashboard on the host-assigned HTTP port and make the labeler endpoint publicly reachable at `LABELER_ENDPOINT`.
-- Keep Tap reachable from the app service at `TAP_URL`; use `TAP_HEALTH_URL` if the WebSocket endpoint is not also a valid HTTP(S) base URL.
+- Keep Tap reachable from the app service at `TAP_URL`; do not rely on a localhost default.
 - If you need to reset state on a hosted platform, set `RESET_DB=true` for one restart, then remove it.

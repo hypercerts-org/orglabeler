@@ -1,6 +1,6 @@
 import 'dotenv/config'
 import fs from 'node:fs'
-import { HOST, LABELER_PORT, METRICS_PORT, TAP_HEALTH_URL, APP_DB_PATHS } from '../lib/config'
+import { HOST, LABELER_PORT, METRICS_PORT, TAP_URL, APP_DB_PATHS } from '../lib/config'
 import { getPendingActivities, deleteActivity } from '../lib/db'
 import { labelerServer, negateAllDIDLabels, applyQualityLabel } from './server'
 import { startTapConsumer, backfillHfClassification, syncLabelsWithDb } from './tap-consumer'
@@ -104,10 +104,10 @@ async function main() {
   }
 
   // 3. Wait for external Tap service
-  logger.info({ tapHealthUrl: TAP_HEALTH_URL }, 'Waiting for external Tap health...')
+  logger.info('Waiting for external Tap health...')
 
   // 4. Wait for tap to be ready
-  await waitForTap(TAP_HEALTH_URL)
+  await waitForTap(TAP_URL)
 
   // 5. Start tap consumer (replaces Jetstream subscription)
   consumer = startTapConsumer()
