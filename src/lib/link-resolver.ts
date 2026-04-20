@@ -1,4 +1,4 @@
-export type LinkResolutionMethod = 'HEAD' | 'GET'
+export type LinkResolutionMethod = 'GET'
 
 export type LinkResolutionReason = 'ok' | 'invalid-url' | 'timeout' | 'network-error' | 'http-error'
 
@@ -15,8 +15,6 @@ export interface LinkResolutionResult {
 }
 
 const DEFAULT_TIMEOUT_MS = 2500
-const UNSUPPORTED_HEAD_STATUSES = new Set([405, 501])
-
 function normalizeUrlInput(url: string): string {
   return url.trim()
 }
@@ -65,9 +63,9 @@ async function requestUrl(url: string, method: LinkResolutionMethod, timeoutMs: 
   }
 }
 
-async function tryMethod(url: string, method: LinkResolutionMethod, timeoutMs: number): Promise<LinkResolutionResult> {
+async function tryGet(url: string, timeoutMs: number): Promise<LinkResolutionResult> {
   try {
-    const response = await requestUrl(url, method, timeoutMs)
+    const response = await requestUrl(url, 'GET', timeoutMs)
 
     if (isResolvableStatus(response.status)) {
       return createResult({
@@ -75,7 +73,7 @@ async function tryMethod(url: string, method: LinkResolutionMethod, timeoutMs: n
         normalizedUrl: url,
         resolvable: true,
         reason: 'ok',
-        method,
+        method: 'GET',
         status: response.status,
         statusText: response.statusText,
         finalUrl: response.url || url,
@@ -87,7 +85,7 @@ async function tryMethod(url: string, method: LinkResolutionMethod, timeoutMs: n
       normalizedUrl: url,
       resolvable: false,
       reason: 'http-error',
-      method,
+      method: 'GET',
       status: response.status,
       statusText: response.statusText,
       finalUrl: response.url || url,
@@ -102,7 +100,7 @@ async function tryMethod(url: string, method: LinkResolutionMethod, timeoutMs: n
       normalizedUrl: url,
       resolvable: false,
       reason,
-      method,
+      method: 'GET',
       error: message,
     })
   }
@@ -148,25 +146,5 @@ export async function resolvePublicUrl(url: string, timeoutMs = DEFAULT_TIMEOUT_
     })
   }
 
-  const headResult = await tryMethod(normalizedUrl, 'HEAD', timeoutMs)
-
-  if (headResult.resolvable) {
-    return headResult
-  }
-
-  if (headResult.reason === 'timeout' || headResult.reason === 'network-error') {
-    return headResult
-  }
-
-  if (headResult.status !== null && !UNSUPPORTED_HEAD_STATUSES.has(headResult.status)) {
-    return headResult
-  }
-
-  const getResult = await tryMethod(normalizedUrl, 'GET', timeoutMs)
-
-  if (getResult.resolvable) {
-    return getResult
-  }
-
-  return getResult
+  return tryGet(normalizedUrl, timeoutMs)
 }
