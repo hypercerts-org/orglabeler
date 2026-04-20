@@ -8,6 +8,7 @@ import {
   getAllActivitiesForSync,
   getProfileSnapshot,
   getOrganizationSnapshot,
+  getAllOrganizationSnapshots,
   upsertProfileSnapshot,
   upsertOrganizationSnapshot,
 } from '../lib/db'
@@ -56,7 +57,7 @@ function buildHfText(
     .join(' ')
 }
 
-async function recomputeLabeledOrganizationRow(did: string): Promise<void> {
+export async function recomputeLabeledOrganizationRow(did: string): Promise<void> {
   const organization = getOrganizationSnapshot(did)
   if (!organization) return
 
@@ -101,6 +102,22 @@ async function recomputeLabeledOrganizationRow(did: string): Promise<void> {
   } catch (err) {
     logger.error({ err, uri: organization.recordUri, did }, 'Error applying organization label (score still saved)')
   }
+}
+
+export async function reconcileStoredOrganizationSnapshots(): Promise<number> {
+  const snapshots = getAllOrganizationSnapshots()
+
+  for (const snapshot of snapshots) {
+    await recomputeLabeledOrganizationRow(snapshot.did)
+  }
+
+  if (snapshots.length > 0) {
+    logger.info({ count: snapshots.length }, 'Reconciled local organization snapshots on startup')
+  } else {
+    logger.info('No local organization snapshots found for startup reconciliation')
+  }
+
+  return snapshots.length
 }
 
 indexer.record(async (evt) => {

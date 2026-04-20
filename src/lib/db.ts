@@ -232,6 +232,17 @@ export function listOrganizationSnapshots(limit = 50, offset = 0): OrganizationS
   return listSnapshots<OrganizationSnapshot['payload']>('organization_snapshots', limit, offset)
 }
 
+export function getAllOrganizationSnapshots(): OrganizationSnapshot[] {
+  const db = getDb()
+  const rows = db.prepare(`
+    SELECT did, record_uri, rkey, payload, updated_at
+    FROM organization_snapshots
+    ORDER BY updated_at DESC
+  `).all() as SnapshotRow[]
+
+  return rows.map(row => snapshotRowToEntry<OrganizationSnapshot['payload']>(row))
+}
+
 export function deleteOrganizationSnapshot(did: string): void {
   deleteSnapshot('organization_snapshots', did)
 }

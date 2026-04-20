@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import { HOST, LABELER_PORT, METRICS_PORT, TAP_URL, APP_DB_PATHS } from '../lib/config'
 import { getPendingActivities, deleteActivity } from '../lib/db'
 import { labelerServer, negateAllDIDLabels, applyQualityLabel } from './server'
-import { startTapConsumer, backfillHfClassification, syncLabelsWithDb } from './tap-consumer'
+import { startTapConsumer, backfillHfClassification, syncLabelsWithDb, reconcileStoredOrganizationSnapshots } from './tap-consumer'
 import { setReclassifyCallback } from '../lib/hf-classifier'
 import { startMetricsServer } from './metrics'
 import logger from './logger'
@@ -102,6 +102,9 @@ async function main() {
       deleteActivity(record.did, record.rkey)
     }
   }
+
+  // Reconcile local organization snapshots before steady-state ingestion begins.
+  await reconcileStoredOrganizationSnapshots()
 
   // 3. Wait for external Tap service
   logger.info('Waiting for external Tap health...')
