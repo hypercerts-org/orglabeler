@@ -92,6 +92,7 @@ export async function recomputeLabeledOrganizationRow(did: string): Promise<void
     did,
     profile: profile?.payload ?? null,
     organization: organization.payload,
+    profileValidationNotes: profile?.validationNotes ?? [],
   })
   const merged = getMergedActorDisplay({
     did,
@@ -112,6 +113,7 @@ export async function recomputeLabeledOrganizationRow(did: string): Promise<void
         tier: result.tier,
         breakdown: JSON.stringify(result.breakdown),
         testSignals: JSON.stringify(result.testSignals),
+        validationNotes: result.validationNotes,
         labeledAt: new Date().toISOString(),
       })
       logger.info(

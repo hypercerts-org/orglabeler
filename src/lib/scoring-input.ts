@@ -15,6 +15,7 @@ export interface MergedScoringInput {
   profileDisplayName: string | null
   profileDescription: string | null
   profileWebsite: string | null
+  validationNotes: string[]
   hasAvatar: boolean
   hasBanner: boolean
   organizationType: string[]
@@ -27,6 +28,7 @@ export interface MergedScoringInputSource {
   did: string
   profile: ProfileRecord | null
   organization: OrganizationRecord | null
+  profileValidationNotes?: string[]
 }
 
 function normalizeText(value: unknown): string {
@@ -67,6 +69,9 @@ export function buildMergedScoringInput(source: MergedScoringInputSource): Merge
   const profileDisplayName = normalizeText(source.profile?.displayName) || null
   const profileDescription = normalizeText(source.profile?.description) || null
   const profileWebsite = normalizeText(source.profile?.website) || null
+  const validationNotes = (source.profileValidationNotes ?? [])
+    .map(normalizeText)
+    .filter(note => note.length > 0)
   const organizationType = (source.organization?.organizationType ?? [])
     .map(normalizeText)
     .filter(value => value.length > 0)
@@ -90,6 +95,7 @@ export function buildMergedScoringInput(source: MergedScoringInputSource): Merge
     profileDisplayName,
     profileDescription,
     profileWebsite,
+    validationNotes,
     hasAvatar: source.profile?.avatar != null,
     hasBanner: source.profile?.banner != null,
     organizationType,

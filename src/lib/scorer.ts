@@ -6,6 +6,10 @@ import { evaluateMergedActorAuthenticity } from './scoring-authenticity'
 import { validateOrganizationLocationRef } from './location-utils'
 import { displayNameMatchesWebsiteDomain, normalizePublicWebsiteUrl } from './website-utils'
 
+export type ScoreResultWithValidationNotes = ScoreResult & {
+  validationNotes: string[]
+}
+
 const ZERO_BREAKDOWN: ScoreBreakdown = {
   displayName: 0,
   description: 0,
@@ -116,14 +120,17 @@ function scoreBanner(hasBanner: boolean): number {
   return hasBanner ? COMPLETENESS_WEIGHTS.banner : 0
 }
 
-export async function scoreActivity(record: MergedScoringInput): Promise<ScoreResult> {
+export async function scoreActivity(record: MergedScoringInput): Promise<ScoreResultWithValidationNotes> {
   const authenticity = evaluateMergedActorAuthenticity(record)
+  const validationNotes = record.validationNotes ?? []
+
   if (!authenticity.passed) {
     return {
       totalScore: 0,
       tier: AUTHENTICITY_FAILURE_TIER,
       breakdown: ZERO_BREAKDOWN,
       testSignals: authenticity.signals,
+      validationNotes,
     }
   }
 
@@ -169,6 +176,7 @@ export async function scoreActivity(record: MergedScoringInput): Promise<ScoreRe
     tier,
     breakdown,
     testSignals: [],
+    validationNotes,
   }
 }
 
