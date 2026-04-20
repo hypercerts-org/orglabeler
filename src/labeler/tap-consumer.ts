@@ -9,11 +9,14 @@ import {
   getProfileSnapshot,
   getOrganizationSnapshot,
   getAllOrganizationSnapshots,
+  deleteProfileSnapshot,
+  deleteOrganizationRecordState,
+  clearActivityHfFields,
   upsertProfileSnapshot,
   upsertOrganizationSnapshot,
 } from '../lib/db'
 import { enqueueClassification, reevaluateExistingClassifications } from '../lib/hf-classifier'
-import { applyQualityLabel, fetchCurrentLabels } from './server'
+import { applyQualityLabel, fetchCurrentLabels, negateQualityLabels } from './server'
 import { getMergedActorDisplay } from '../lib/actor-display'
 import logger from './logger'
 import type { ActivityRecord, RuntimeLabelTier } from '../lib/types'
@@ -55,6 +58,22 @@ function buildHfText(
     .map(part => part?.trim())
     .filter((part): part is string => Boolean(part))
     .join(' ')
+}
+
+function refreshHfClassification(did: string): void {
+  const organization = getOrganizationSnapshot(did)
+  if (!organization) return
+
+  const profile = getProfileSnapshot(did)
+  const merged = getMergedActorDisplay({
+    did,
+    profile: profile?.payload ?? null,
+    organization: organization.payload,
+  })
+  const text = buildHfText(profile, organization.payload, merged.displayName)
+
+  clearActivityHfFields(did, organization.rkey)
+  enqueueClassification(text, did, organization.rkey)
 }
 
 export async function recomputeLabeledOrganizationRow(did: string): Promise<void> {
@@ -120,10 +139,33 @@ export async function reconcileStoredOrganizationSnapshots(): Promise<number> {
   return snapshots.length
 }
 
+async function handleOrganizationDelete(did: string, rkey: string): Promise<void> {
+  const organization = getOrganizationSnapshot(did)
+  const recordUri = organization?.recordUri ?? `at://${did}/${ORGANIZATION_COLLECTION}/${rkey}`
+
+  deleteOrganizationRecordState(did, rkey)
+
+  try {
+    await negateQualityLabels(recordUri)
+  } catch (err) {
+    logger.error({ err, did, rkey, uri: recordUri }, 'Error negating organization labels after delete')
+  }
+}
+
+async function handleProfileDelete(did: string): Promise<void> {
+  deleteProfileSnapshot(did)
+
+  if (getOrganizationSnapshot(did)) {
+    await recomputeLabeledOrganizationRow(did)
+    refreshHfClassification(did)
+  }
+}
+
 indexer.record(async (evt) => {
   if (evt.collection === PROFILE_COLLECTION) {
     if (evt.action === 'delete') {
-      logger.debug({ did: evt.did, rkey: evt.rkey }, 'Skipping profile delete event')
+      await handleProfileDelete(evt.did)
+      logger.debug({ did: evt.did, rkey: evt.rkey }, 'Handled profile delete event')
       return
     }
 
@@ -151,6 +193,7 @@ indexer.record(async (evt) => {
 
     if (getOrganizationSnapshot(evt.did)) {
       await recomputeLabeledOrganizationRow(evt.did)
+      refreshHfClassification(evt.did)
     }
 
     logger.debug({ did: evt.did, rkey: evt.rkey }, 'Stored profile snapshot')
@@ -160,7 +203,8 @@ indexer.record(async (evt) => {
   if (evt.collection !== ORGANIZATION_COLLECTION) return
 
   if (evt.action === 'delete') {
-    logger.debug({ did: evt.did, rkey: evt.rkey }, 'Skipping organization delete event')
+    await handleOrganizationDelete(evt.did, evt.rkey)
+    logger.debug({ did: evt.did, rkey: evt.rkey }, 'Handled organization delete event')
     return
   }
 
@@ -183,21 +227,12 @@ indexer.record(async (evt) => {
     did: evt.did,
     recordUri: `at://${evt.did}/${ORGANIZATION_COLLECTION}/${evt.rkey}`,
     rkey: evt.rkey,
-    payload: parsed.value,
+    payload: record,
     updatedAt: new Date().toISOString(),
   })
 
   await recomputeLabeledOrganizationRow(evt.did)
-
-  // Fire-and-forget: enqueue HF classification (runs in background, updates DB when done)
-  const profile = getProfileSnapshot(evt.did)
-  const merged = getMergedActorDisplay({
-    did: evt.did,
-    profile: profile?.payload ?? null,
-    organization: record,
-  })
-  const text = buildHfText(profile, record, merged.displayName)
-  enqueueClassification(text, evt.did, evt.rkey)
+  refreshHfClassification(evt.did)
 })
 
 indexer.error((err) => {
@@ -234,7 +269,6 @@ export async function syncLabelsWithDb(): Promise<void> {
     try {
       const currentLabels = await fetchCurrentLabels(activity.uri)
       const currentQuality = [...currentLabels].filter(isRuntimeLabelTier)
-
       if (!isRuntimeLabelTier(activity.tier)) {
         continue
       }

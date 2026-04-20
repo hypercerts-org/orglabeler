@@ -9,6 +9,8 @@ import type {
   RuntimeLabelTier,
 } from './types'
 
+export const HF_POSITIVE_LABEL = 'well-formed actor profile'
+
 export interface HfClassificationData {
   hfLabel: string | null
   hfScore: number | null
@@ -36,6 +38,21 @@ interface SnapshotRow {
   rkey: string
   payload: string
   updated_at: string
+}
+
+type ActivityLogInput = {
+  did: string
+  rkey: string
+  uri: string
+  displayName?: string
+  title?: string
+  score: number
+  tier: LabelTier
+  breakdown: string
+  testSignals: string
+  labeledAt: string
+  hfLabel?: string | null
+  hfScore?: number | null
 }
 
 let _db: Database.Database | null = null
@@ -247,9 +264,20 @@ export function deleteOrganizationSnapshot(did: string): void {
   deleteSnapshot('organization_snapshots', did)
 }
 
-// Upsert on did+rkey. Preserves existing hf_label/hf_score when the new values are null.
-export function logActivity(entry: Omit<ActivityLogEntry, 'id'>, hf?: HfClassificationData): void {
+export function deleteOrganizationRecordState(did: string, rkey: string): void {
   const db = getDb()
+  db.prepare('DELETE FROM organization_snapshots WHERE did = ?').run(did)
+  db.prepare('DELETE FROM activities WHERE did = ? AND rkey = ?').run(did, rkey)
+}
+
+// Upsert on did+rkey. Preserves existing hf_label/hf_score when the new values are null.
+export function logActivity(entry: ActivityLogInput, hf?: HfClassificationData): void {
+  const db = getDb()
+  const displayName = entry.displayName ?? entry.title
+  if (!displayName) {
+    throw new Error('logActivity requires a displayName')
+  }
+
   const stmt = db.prepare(`
     INSERT INTO activities
       (did, rkey, uri, title, score, tier, breakdown, test_signals, labeled_at, hf_label, hf_score)
@@ -270,7 +298,7 @@ export function logActivity(entry: Omit<ActivityLogEntry, 'id'>, hf?: HfClassifi
     did: entry.did,
     rkey: entry.rkey,
     uri: entry.uri,
-    title: entry.title,
+    title: displayName,
     score: entry.score,
     tier: entry.tier,
     breakdown: entry.breakdown,
@@ -305,7 +333,7 @@ export function getRecentActivities(limit = 20, offset = 0): ActivityLogEntry[] 
   const safeLimit = Math.max(1, Math.min(limit || 20, 100))
   const safeOffset = Math.max(0, offset || 0)
   const rows = db.prepare(`
-    SELECT id, did, rkey, uri, title, score, tier, breakdown, test_signals, labeled_at, hf_label, hf_score
+    SELECT id, did, rkey, uri, title AS displayName, score, tier, breakdown, test_signals, labeled_at, hf_label, hf_score
     FROM activities
     ORDER BY labeled_at DESC
     LIMIT ? OFFSET ?
@@ -321,7 +349,7 @@ export function getActivitiesByTier(tier: RuntimeLabelTier, limit = 20, offset =
   const safeLimit = Math.max(1, Math.min(limit || 20, 100))
   const safeOffset = Math.max(0, offset || 0)
   const rows = db.prepare(`
-    SELECT id, did, rkey, uri, title, score, tier, breakdown, test_signals, labeled_at, hf_label, hf_score
+    SELECT id, did, rkey, uri, title AS displayName, score, tier, breakdown, test_signals, labeled_at, hf_label, hf_score
     FROM activities
     WHERE tier = ?
     ORDER BY labeled_at DESC
@@ -381,7 +409,7 @@ export function getStats(): LabelStats {
 export function getPendingActivities(): ActivityLogEntry[] {
   const db = getDb()
   const rows = db.prepare(
-    'SELECT id, did, rkey, uri, title, score, tier, breakdown, test_signals, labeled_at, hf_label, hf_score FROM activities WHERE tier NOT IN (?, ?, ?)'
+    'SELECT id, did, rkey, uri, title AS displayName, score, tier, breakdown, test_signals, labeled_at, hf_label, hf_score FROM activities WHERE tier NOT IN (?, ?, ?)'
   ).all('likely-test', 'standard', 'high-quality') as Array<Record<string, unknown>>
   return rows.map(rowToEntry)
 }
@@ -399,13 +427,20 @@ export function updateActivityHfFields(did: string, rkey: string, hfLabel: strin
     .run(hfLabel, hfScore, did, rkey)
 }
 
+// Clear HF classification so the row can be re-evaluated against a newer merged text snapshot.
+export function clearActivityHfFields(did: string, rkey: string): void {
+  const db = getDb()
+  db.prepare('UPDATE activities SET hf_label = NULL, hf_score = NULL WHERE did = ? AND rkey = ?')
+    .run(did, rkey)
+}
+
 // Get activities that have been AI-evaluated (hf_label IS NOT NULL). Sorted by labeled_at DESC.
 export function getAiEvaluatedActivities(limit = 20, offset = 0): ActivityLogEntry[] {
   const db = getDb()
   const safeLimit = Math.max(1, Math.min(limit || 20, 100))
   const safeOffset = Math.max(0, offset || 0)
   const rows = db.prepare(`
-    SELECT id, did, rkey, uri, title, score, tier, breakdown, test_signals, labeled_at, hf_label, hf_score
+    SELECT id, did, rkey, uri, title AS displayName, score, tier, breakdown, test_signals, labeled_at, hf_label, hf_score
     FROM activities
     WHERE hf_label IS NOT NULL
     ORDER BY labeled_at DESC
@@ -422,21 +457,21 @@ export function getAiEvaluatedCount(): number {
 }
 
 // Get all activities that have not yet been classified by HF (hf_label IS NULL).
-export function getUnclassifiedActivities(): Array<{ did: string; rkey: string; title: string }> {
+export function getUnclassifiedActivities(): Array<{ did: string; rkey: string; title: string; displayName: string }> {
   const db = getDb()
   return db.prepare(
-    'SELECT did, rkey, title FROM activities WHERE hf_label IS NULL ORDER BY id ASC'
-  ).all() as Array<{ did: string; rkey: string; title: string }>
+    'SELECT did, rkey, title, title AS displayName FROM activities WHERE hf_label IS NULL ORDER BY id ASC'
+  ).all() as Array<{ did: string; rkey: string; title: string; displayName: string }>
 }
 
 // Get all activities that have HF classification but were NOT flagged (tier is not 'likely-test')
-// and whose HF label is not 'meaningful project description'.
+// and whose HF label is not the positive actor-profile label.
 // These need re-evaluation against potentially updated thresholds.
 export function getHfClassifiedNonFlagged(): Array<{ did: string; rkey: string; hfLabel: string; hfScore: number }> {
   const db = getDb()
   return db.prepare(
-    "SELECT did, rkey, hf_label as hfLabel, hf_score as hfScore FROM activities WHERE hf_label IS NOT NULL AND hf_label != 'meaningful project description' AND tier != 'likely-test' ORDER BY id ASC"
-  ).all() as Array<{ did: string; rkey: string; hfLabel: string; hfScore: number }>
+    'SELECT did, rkey, hf_label as hfLabel, hf_score as hfScore FROM activities WHERE hf_label IS NOT NULL AND hf_label != ? AND tier != \'likely-test\' ORDER BY id ASC'
+  ).all(HF_POSITIVE_LABEL) as Array<{ did: string; rkey: string; hfLabel: string; hfScore: number }>
 }
 
 // Get all activities with their current tier. Used for label sync on startup.
@@ -447,14 +482,14 @@ export function getAllActivitiesForSync(): Array<{ did: string; rkey: string; ur
   ).all() as Array<{ did: string; rkey: string; uri: string; tier: string }>
 }
 
-// Search activities by title, DID, or URI. Sorted by labeled_at DESC.
+// Search activities by displayName, DID, or URI. Sorted by labeled_at DESC.
 export function searchActivities(query: string, limit = 20, offset = 0): ActivityLogEntry[] {
   const db = getDb()
   const safeLimit = Math.max(1, Math.min(limit || 20, 100))
   const safeOffset = Math.max(0, offset || 0)
   const pattern = `%${query}%`
   const rows = db.prepare(`
-    SELECT id, did, rkey, uri, title, score, tier, breakdown, test_signals, labeled_at, hf_label, hf_score
+    SELECT id, did, rkey, uri, title AS displayName, score, tier, breakdown, test_signals, labeled_at, hf_label, hf_score
     FROM activities
     WHERE title LIKE @pattern OR did LIKE @pattern OR uri LIKE @pattern
     ORDER BY labeled_at DESC
@@ -463,7 +498,7 @@ export function searchActivities(query: string, limit = 20, offset = 0): Activit
   return rows.map(rowToEntry)
 }
 
-// Get count of activities matching a search query (title, DID, or URI).
+// Get count of activities matching a search query (displayName, DID, or URI).
 export function searchActivitiesCount(query: string): number {
   const db = getDb()
   const pattern = `%${query}%`
@@ -477,7 +512,7 @@ export function searchActivitiesCount(query: string): number {
 export function getActivityByDidRkey(did: string, rkey: string): ActivityLogEntry | null {
   const db = getDb()
   const row = db.prepare(
-    'SELECT id, did, rkey, uri, title, score, tier, breakdown, test_signals, labeled_at, hf_label, hf_score FROM activities WHERE did = ? AND rkey = ?'
+    'SELECT id, did, rkey, uri, title AS displayName, score, tier, breakdown, test_signals, labeled_at, hf_label, hf_score FROM activities WHERE did = ? AND rkey = ?'
   ).get(did, rkey) as Record<string, unknown> | undefined
   return row ? rowToEntry(row) : null
 }
@@ -488,7 +523,7 @@ function rowToEntry(row: Record<string, unknown>): ActivityLogEntry {
     did: row['did'] as string,
     rkey: row['rkey'] as string,
     uri: row['uri'] as string,
-    title: row['title'] as string,
+    displayName: row['displayName'] as string,
     score: row['score'] as number,
     tier: row['tier'] as LabelTier,
     breakdown: row['breakdown'] as string,
