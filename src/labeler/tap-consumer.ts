@@ -81,6 +81,24 @@ function summarizeFallbackPreservation(profile: ProfileFallbackProfile | null): 
   }
 }
 
+function getProfileIngestMode(profile: ReturnType<typeof getProfileSnapshot>): 'strict' | 'fallback' | 'missing' {
+  if (!profile) return 'missing'
+  return profile.validationNotes.length > 0 ? 'fallback' : 'strict'
+}
+
+function logRecordOutcome(details: {
+  did: string
+  collection: string
+  action: string
+  source: 'live' | 'startup'
+  labelAction: string
+  score?: number
+  tier?: RuntimeLabelTier
+  profileIngestMode?: 'strict' | 'fallback' | 'missing'
+}): void {
+  logger.info(details, 'Processed Tap record')
+}
+
 function buildHfText(
   profileSnapshot: ReturnType<typeof getProfileSnapshot>,
   organization: ActivityRecord,
@@ -122,9 +140,16 @@ function refreshHfClassification(did: string): void {
   enqueueClassification(text, did, organization.rkey)
 }
 
-export async function recomputeLabeledOrganizationRow(did: string, source: 'live' | 'startup' = 'live'): Promise<void> {
+type OrganizationRecomputeOutcome = {
+  score: number
+  tier: RuntimeLabelTier
+  labelAction: 'applied' | 'unchanged' | 'negated-and-applied'
+  profileIngestMode: 'strict' | 'fallback' | 'missing'
+}
+
+export async function recomputeLabeledOrganizationRow(did: string): Promise<OrganizationRecomputeOutcome | null> {
   const organization = getOrganizationSnapshot(did)
-  if (!organization) return
+  if (!organization) return null
 
   const profile = getProfileSnapshot(did)
   const scoringInput = buildMergedScoringInput({
@@ -155,23 +180,43 @@ export async function recomputeLabeledOrganizationRow(did: string, source: 'live
         validationNotes: result.validationNotes,
         labeledAt: new Date().toISOString(),
       })
-      logger.info(
-        { did, rkey: organization.rkey, source, score: result.totalScore, tier: result.tier },
-        `Scored merged organization row: ${result.totalScore}/100 → ${result.tier}`,
-      )
     } catch (err) {
       logger.error({ err, did, rkey: organization.rkey }, 'Error logging organization row')
-      return
+      return null
     }
 
+    if (!isRuntimeLabelTier(result.tier)) {
+      logger.error({ did, rkey: organization.rkey, tier: result.tier }, 'Scoring produced unsupported runtime tier')
+      return null
+    }
+
+    const currentLabels = await fetchCurrentLabels(organization.recordUri)
+    const currentQualityLabels = [...currentLabels].filter(isRuntimeLabelTier)
+    const profileIngestMode = getProfileIngestMode(profile)
+    const labelAction: OrganizationRecomputeOutcome['labelAction'] = currentQualityLabels.includes(result.tier)
+      ? 'unchanged'
+      : currentQualityLabels.length > 0
+        ? 'negated-and-applied'
+        : 'applied'
+
     try {
-      await applyQualityLabel(organization.recordUri, result.tier)
+      if (labelAction !== 'unchanged') {
+        await applyQualityLabel(organization.recordUri, result.tier)
+      }
     } catch (err) {
       logger.error({ err, uri: organization.recordUri, did }, 'Error applying organization label (score still saved)')
+      return null
+    }
+
+    return {
+      score: result.totalScore,
+      tier: result.tier,
+      labelAction,
+      profileIngestMode,
     }
   } catch (err) {
     logger.error({ err, did, rkey: organization.rkey }, 'Error scoring organization snapshot')
-    return
+    return null
   }
 }
 
@@ -179,7 +224,19 @@ export async function reconcileStoredOrganizationSnapshots(): Promise<number> {
   const snapshots = getAllOrganizationSnapshots()
 
   for (const snapshot of snapshots) {
-    await recomputeLabeledOrganizationRow(snapshot.did, 'startup')
+    const outcome = await recomputeLabeledOrganizationRow(snapshot.did)
+    if (outcome) {
+      logRecordOutcome({
+        did: snapshot.did,
+        collection: ORGANIZATION_COLLECTION,
+        action: 'reconcile',
+        source: 'startup',
+        score: outcome.score,
+        tier: outcome.tier,
+        labelAction: outcome.labelAction,
+        profileIngestMode: outcome.profileIngestMode,
+      })
+    }
   }
 
   const pendingDeletes = getPendingOrganizationDeletes()
@@ -218,9 +275,18 @@ async function handleOrganizationDelete(did: string, rkey: string): Promise<void
   upsertPendingOrganizationDelete(did, rkey, recordUri)
 
   try {
-    await negateQualityLabels(recordUri)
+    const negatedCount = await negateQualityLabels(recordUri)
     deleteOrganizationRecordState(did, rkey)
     deletePendingOrganizationDelete(did)
+
+    logRecordOutcome({
+      did,
+      collection: ORGANIZATION_COLLECTION,
+      action: 'delete',
+      source: 'live',
+      labelAction: negatedCount > 0 ? 'negated' : 'unchanged',
+      profileIngestMode: getProfileIngestMode(getProfileSnapshot(did)),
+    })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     recordPendingOrganizationDeleteAttempt(did, message)
@@ -232,8 +298,30 @@ async function handleProfileDelete(did: string): Promise<void> {
   deleteProfileSnapshot(did)
 
   if (getOrganizationSnapshot(did)) {
-    await recomputeLabeledOrganizationRow(did)
+    const outcome = await recomputeLabeledOrganizationRow(did)
     refreshHfClassification(did)
+
+    if (outcome) {
+      logRecordOutcome({
+        did,
+        collection: PROFILE_COLLECTION,
+        action: 'delete',
+        source: 'live',
+        score: outcome.score,
+        tier: outcome.tier,
+        labelAction: outcome.labelAction,
+        profileIngestMode: outcome.profileIngestMode,
+      })
+    }
+  } else {
+    logRecordOutcome({
+      did,
+      collection: PROFILE_COLLECTION,
+      action: 'delete',
+      source: 'live',
+      labelAction: 'profile-deleted',
+      profileIngestMode: 'missing',
+    })
   }
 }
 
@@ -245,12 +333,9 @@ indexer.record(async (evt) => {
     rkey: evt.rkey,
   }
 
-  logger.info(eventMeta, 'Tap event received before routing')
-
   if (evt.collection === PROFILE_COLLECTION) {
     if (evt.action === 'delete') {
       await handleProfileDelete(evt.did)
-      logger.info(eventMeta, 'Processed profile delete event')
       return
     }
 
@@ -269,8 +354,6 @@ indexer.record(async (evt) => {
         validationNotes: [],
         updatedAt: new Date().toISOString(),
       })
-
-      logger.info(eventMeta, 'Stored strict profile snapshot')
     } else {
       const fallback = salvageProfileFallback(evt.record)
       const preserved = fallback.mode === 'fallback'
@@ -300,8 +383,6 @@ indexer.record(async (evt) => {
         return
       }
 
-      const { noteCount, noteSummary } = summarizeValidationNotes(fallback.validationNotes)
-
       upsertProfileSnapshot({
         did: evt.did,
         recordUri: `at://${evt.did}/${PROFILE_COLLECTION}/${evt.rkey}`,
@@ -310,37 +391,44 @@ indexer.record(async (evt) => {
         validationNotes: fallback.validationNotes,
         updatedAt: new Date().toISOString(),
       })
-
-      logger.info(
-        {
-          ...eventMeta,
-          fallbackSucceeded: true,
-          reason: parsed.reason?.message,
-          noteCount,
-          noteSummary,
-          preserved,
-        },
-        'Stored fallback profile snapshot',
-      )
     }
 
     if (getOrganizationSnapshot(evt.did)) {
-      logger.info(eventMeta, 'Profile update triggered organization recompute')
-      await recomputeLabeledOrganizationRow(evt.did)
+      const outcome = await recomputeLabeledOrganizationRow(evt.did)
       refreshHfClassification(evt.did)
+
+      if (outcome) {
+        logRecordOutcome({
+          did: evt.did,
+          collection: PROFILE_COLLECTION,
+          action: evt.action,
+          source: 'live',
+          score: outcome.score,
+          tier: outcome.tier,
+          labelAction: outcome.labelAction,
+          profileIngestMode: getProfileIngestMode(getProfileSnapshot(evt.did)),
+        })
+      }
+    } else {
+      logRecordOutcome({
+        did: evt.did,
+        collection: PROFILE_COLLECTION,
+        action: evt.action,
+        source: 'live',
+        labelAction: 'profile-saved',
+        profileIngestMode: getProfileIngestMode(getProfileSnapshot(evt.did)),
+      })
     }
 
     return
   }
 
   if (evt.collection !== ORGANIZATION_COLLECTION) {
-    logger.info(eventMeta, 'Ignoring non-target Tap collection')
     return
   }
 
   if (evt.action === 'delete') {
     await handleOrganizationDelete(evt.did, evt.rkey)
-    logger.info(eventMeta, 'Processed organization delete event')
     return
   }
 
@@ -364,10 +452,21 @@ indexer.record(async (evt) => {
     updatedAt: new Date().toISOString(),
   })
 
-  logger.info(eventMeta, 'Stored validated organization snapshot; recomputing score')
-
-  await recomputeLabeledOrganizationRow(evt.did)
+  const outcome = await recomputeLabeledOrganizationRow(evt.did)
   refreshHfClassification(evt.did)
+
+  if (outcome) {
+    logRecordOutcome({
+      did: evt.did,
+      collection: ORGANIZATION_COLLECTION,
+      action: evt.action,
+      source: 'live',
+      score: outcome.score,
+      tier: outcome.tier,
+      labelAction: outcome.labelAction,
+      profileIngestMode: outcome.profileIngestMode,
+    })
+  }
 })
 
 indexer.error((err) => {
