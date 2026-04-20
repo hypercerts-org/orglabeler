@@ -250,12 +250,12 @@ export default function DocsPage() {
             },
             {
               tier: 'standard' as const,
-              range: '35 – 74',
+              range: '45 – 74',
               detail: 'Decent merged record with some useful metadata, but not full rubric coverage.',
             },
             {
               tier: 'likely-test' as const,
-              range: '0 – 34 or gate failures',
+              range: '0 – 44 or gate failures',
               detail: 'Contains authenticity gate failures, or falls below the standard threshold.',
             },
           ].map(({ tier, range, detail }) => (

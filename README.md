@@ -8,8 +8,8 @@ This fork monitors both `app.certified.actor.profile` and `app.certified.actor.o
 
 | Label | Score | Meaning |
 |-------|-------|---------|
-| ⚠ Likely Test | 0-34 | Placeholder, junk, or obvious test data |
-| ● Standard | 35-74 | A valid organization record with the basics filled in |
+| ⚠ Likely Test | 0-44 | Placeholder, junk, or obvious test data |
+| ● Standard | 45-74 | A valid organization record with the basics filled in |
 | ✦ High Quality | 75-100 | A complete organization record with several strong details |
 
 ## Quick Start

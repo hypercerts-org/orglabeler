@@ -39,10 +39,10 @@ export const COMPLETENESS_WEIGHTS = {
 } as const
 
 // Final score bands are intentionally coarse and should stay readable here:
-// 0-34 => likely-test, 35-74 => standard, 75-100 => high-quality.
+// 0-44 => likely-test, 45-74 => standard, 75-100 => high-quality.
 export const SCORE_THRESHOLDS: Record<RuntimeQualityTier, { min: number; max: number }> = {
-  'likely-test': { min: 0, max: 34 },
-  standard: { min: 35, max: 74 },
+  'likely-test': { min: 0, max: 44 },
+  standard: { min: 45, max: 74 },
   'high-quality': { min: 75, max: 100 },
 }
 
