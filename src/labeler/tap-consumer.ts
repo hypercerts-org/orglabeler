@@ -139,19 +139,6 @@ export async function recomputeLabeledOrganizationRow(did: string, source: 'live
     organization: organization.payload,
   })
 
-  logger.info(
-    {
-      did,
-      rkey: organization.rkey,
-      source,
-      profileIngestMode: merged.profileIngestMode,
-      profileDisplayNamePresence: merged.profileDisplayNamePresence,
-      displayNameSource: merged.displayNameSource,
-      displayName: merged.displayName,
-    },
-    'Scoring organization row',
-  )
-
   try {
     const result = await scoreActivity(scoringInput)
 
@@ -274,8 +261,6 @@ indexer.record(async (evt) => {
 
     const parsed = $safeParseProfile(evt.record)
     if (parsed.success) {
-      const profileDisplayNamePresence = parsed.value.displayName?.trim() ? 'present' : 'absent'
-
       upsertProfileSnapshot({
         did: evt.did,
         recordUri: `at://${evt.did}/${PROFILE_COLLECTION}/${evt.rkey}`,
@@ -285,10 +270,7 @@ indexer.record(async (evt) => {
         updatedAt: new Date().toISOString(),
       })
 
-      logger.info(
-        { ...eventMeta, ingestMode: 'strict', profileDisplayNamePresence },
-        'Stored strict profile snapshot',
-      )
+      logger.info(eventMeta, 'Stored strict profile snapshot')
     } else {
       const fallback = salvageProfileFallback(evt.record)
       const preserved = fallback.mode === 'fallback'
@@ -297,7 +279,7 @@ indexer.record(async (evt) => {
 
       logger.warn(
         { ...eventMeta, reason: parsed.reason?.message },
-        'Profile record failed strict lexicon validation; attempting fallback'
+        'Profile record failed strict lexicon validation; attempting fallback',
       )
 
       if (fallback.mode === 'unusable') {
@@ -306,7 +288,6 @@ indexer.record(async (evt) => {
         logger.warn(
           {
             ...eventMeta,
-            ingestMode: 'fallback',
             fallbackSucceeded: false,
             reason: parsed.reason?.message,
             noteCount,
@@ -333,15 +314,13 @@ indexer.record(async (evt) => {
       logger.info(
         {
           ...eventMeta,
-          ingestMode: 'fallback',
           fallbackSucceeded: true,
           reason: parsed.reason?.message,
-          profileDisplayNamePresence: fallback.profile.displayName ? 'present' : 'absent',
           noteCount,
           noteSummary,
           preserved,
         },
-        'Stored fallback profile snapshot'
+        'Stored fallback profile snapshot',
       )
     }
 

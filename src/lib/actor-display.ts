@@ -20,8 +20,6 @@ export function getMergedActorDisplay(actor: MergedActorInput): MergedActorOutpu
     organization: actor.organization,
     displayName: merged.displayName,
     displayNameSource: merged.displayNameSource,
-    profileIngestMode: merged.profileIngestMode,
-    profileDisplayNamePresence: merged.profileDisplayNamePresence,
     hasProfileDescription: Boolean(merged.profileDescription),
     hasWebsite: Boolean(merged.profileWebsite),
     hasAvatar: merged.hasAvatar,
