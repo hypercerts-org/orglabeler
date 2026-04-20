@@ -135,10 +135,10 @@ export function ScoreCard({ entry, defaultExpanded = false }: ScoreCardProps) {
             {entry.tier === 'pending' ? (
               <p className='text-xs text-muted-foreground italic animate-pulse'>Evaluating record quality...</p>
             ) : (
-              <ScoreBreakdown breakdown={breakdown} testSignals={testSignals} />
-            )}
+               <ScoreBreakdown breakdown={breakdown} validationNotes={entry.validationNotes} testSignals={testSignals} />
+              )}
+            </div>
           </div>
-        </div>
       </div>
     </div>
   )
