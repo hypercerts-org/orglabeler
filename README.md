@@ -108,11 +108,11 @@ Test detection: regex patterns catch common placeholder strings (`test`, `asdf`,
 | `TAP_URL` | required | URL of the separate Tap service (no localhost default) |
 | `ACTIVITY_DB_PATH` | `activity-log.db` | Activity log database path |
 
-Tap-specific settings such as its database path and bind address belong on the Tap service, not the app service.
+Tap-specific settings belong on the Tap service, not the app service. This repo only needs `TAP_URL` here; set `TAP_ADMIN_PASSWORD` on the Tap service if you use Tap admin auth.
 
 ## Production Deployment
 
-Deploy the app service and Tap as separate services. The app service runs the dashboard plus labeler backend and connects to Tap over `TAP_URL`; Tap owns its own database, volume, and lifecycle.
+Deploy the app service and Tap as separate services. The app service runs the dashboard plus labeler backend and connects to Tap over `TAP_URL`; Tap owns its own database, volume, lifecycle, and any Tap-specific auth settings.
 
 The labeler backend (port 4100) must be accessible via HTTPS for AT Protocol clients. Use a reverse proxy:
 

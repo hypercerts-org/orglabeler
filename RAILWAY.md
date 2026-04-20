@@ -78,13 +78,11 @@ Deploy Tap as its own Railway service or equivalent container.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `TAP_DB_PATH` | Tap SQLite path | `tap.db` |
-| `TAP_BIND` | Tap bind address | `:2480` |
 | `TAP_ADMIN_PASSWORD` | Optional admin password | _(empty)_ |
 
 ### Tap storage
 
-Mount a separate persistent volume for `TAP_DB_PATH` and its SQLite companion files (`-wal` / `-shm`).
+Mount a separate persistent volume for the Tap service database files and their SQLite companion files (`-wal` / `-shm`).
 
 ---
 

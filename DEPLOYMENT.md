@@ -59,11 +59,11 @@ Set these to persistent storage in hosted environments:
 - `ACTIVITY_DB_PATH` (default `activity-log.db`)
 - `LABELS_DB_PATH` (default `labels.db`)
 
-### Tap service persistence
+### Tap service storage
 
-The Tap service needs its own persistent SQLite file:
+The Tap service manages its own persistent SQLite file and any Tap-specific settings outside this repo.
 
-- `TAP_DB_PATH` (default `tap.db`)
+If your Tap deployment uses admin auth, configure `TAP_ADMIN_PASSWORD` on the Tap service itself.
 
 ### Optional
 
@@ -89,7 +89,7 @@ Also persist the `-wal` and `-shm` companions that SQLite may create beside each
 ## Recommended deployment flow
 
 1. Build the app service with the repository Dockerfile or an equivalent container build.
-2. Deploy Tap as its own service and mount a separate persistent volume for `tap.db`.
+2. Deploy Tap as its own service and mount a separate persistent volume for its database files.
 3. Mount a persistent volume for the app service's SQLite files.
 4. Set `DID`, `SIGNING_KEY`, and `LABELER_ENDPOINT` before first startup.
 5. Set `TAP_URL` to the Tap service URL.
