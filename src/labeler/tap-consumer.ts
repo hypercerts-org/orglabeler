@@ -13,7 +13,6 @@ import {
 } from '../lib/db'
 import { enqueueClassification, reevaluateExistingClassifications } from '../lib/hf-classifier'
 import { applyQualityLabel, fetchCurrentLabels } from './server'
-import { extractDescriptionText } from '../lib/lexicon-utils'
 import { getMergedActorDisplay } from '../lib/actor-display'
 import logger from './logger'
 import type { ActivityRecord, RuntimeLabelTier } from '../lib/types'
@@ -30,6 +29,31 @@ const indexer = new SimpleIndexer()
 
 function isRuntimeLabelTier(tier: string): tier is RuntimeLabelTier {
   return tier === 'likely-test' || tier === 'standard' || tier === 'high-quality'
+}
+
+function buildHfText(
+  profileSnapshot: ReturnType<typeof getProfileSnapshot>,
+  organization: ActivityRecord,
+  fallbackDisplayName: string,
+): string {
+  const profile = profileSnapshot?.payload
+  const urlParts = (organization.urls ?? []).flatMap((item) => {
+    const label = item.label?.trim()
+    const url = item.url?.trim()
+    return [label, url].filter((part): part is string => Boolean(part))
+  })
+
+  return [
+    fallbackDisplayName,
+    profile?.displayName,
+    profile?.description,
+    profile?.website,
+    (organization.organizationType ?? []).join(' '),
+    urlParts.join(' '),
+  ]
+    .map(part => part?.trim())
+    .filter((part): part is string => Boolean(part))
+    .join(' ')
 }
 
 async function recomputeLabeledOrganizationRow(did: string): Promise<void> {
@@ -149,9 +173,13 @@ indexer.record(async (evt) => {
   await recomputeLabeledOrganizationRow(evt.did)
 
   // Fire-and-forget: enqueue HF classification (runs in background, updates DB when done)
-  // description is now a pub.leaflet.pages.linearDocument object — extract plain text from blocks
-  const descText = extractDescriptionText(record.description)
-  const text = [record.title ?? '', record.shortDescription ?? '', descText].filter(Boolean).join(' ')
+  const profile = getProfileSnapshot(evt.did)
+  const merged = getMergedActorDisplay({
+    did: evt.did,
+    profile: profile?.payload ?? null,
+    organization: record,
+  })
+  const text = buildHfText(profile, record, merged.displayName)
   enqueueClassification(text, evt.did, evt.rkey)
 })
 
@@ -160,9 +188,7 @@ indexer.error((err) => {
 })
 
 // Backfill HF classification for any activities that were ingested before HF was available
-// or that failed classification previously. Uses only the stored title as text input —
-// TODO: store the full concatenated text (title + shortDescription + description) in a
-// dedicated column so backfill can use the same text as the original ingestion path.
+// or that failed classification previously. Uses the stored display name as a fallback.
 export function backfillHfClassification(): void {
   // Re-evaluate existing HF results against current thresholds (catches threshold changes)
   const reclassified = reevaluateExistingClassifications()
@@ -178,8 +204,7 @@ export function backfillHfClassification(): void {
   }
   logger.info({ count: unclassified.length }, 'Backfilling HF classification for unclassified activities')
   for (const { did, rkey, title } of unclassified) {
-    // We only have title from the DB query — enqueue with title as text
-    // (description isn't stored separately, but title is better than nothing)
+    // We only have the stored display name from the DB query — enqueue with that fallback text.
     enqueueClassification(title, did, rkey)
   }
 }

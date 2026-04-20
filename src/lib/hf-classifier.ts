@@ -11,11 +11,13 @@ export interface ContentClassification {
 }
 
 const CANDIDATE_LABELS = [
-  'meaningful project description',
+  'well-formed actor profile',
   'test or placeholder data',
   'song lyrics or copypasta',
   'spam or gibberish',
 ]
+
+const PRIMARY_LABEL = CANDIDATE_LABELS[0]
 
 const DELAY_MS = 2000 // 2s between calls to avoid rate limits
 
@@ -164,7 +166,7 @@ async function classifyContent(text: string, did?: string, rkey?: string): Promi
 }
 
 export function isLowQualityContent(classification: ContentClassification): boolean {
-  return classification.label !== 'meaningful project description'
+  return classification.label !== PRIMARY_LABEL
 }
 
 // Re-evaluate existing HF classifications against current thresholds.

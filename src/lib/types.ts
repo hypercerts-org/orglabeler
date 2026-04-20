@@ -1,7 +1,5 @@
 import type { Main as OrganizationRecordBase } from '../lexicons/app/certified/actor/organization.defs'
 import type { Main as ProfileRecordBase } from '../lexicons/app/certified/actor/profile.defs'
-import type { Main as LinearDocument } from '../lexicons/pub/leaflet/pages/linearDocument.defs'
-
 // Organization record — re-exported from generated lexicon types
 // The canonical shape is defined in lexicons/app/certified/actor/organization.json
 export type { Main as OrganizationRecord } from '../lexicons/app/certified/actor/organization.defs'
@@ -23,13 +21,8 @@ export interface MergedActorOutput extends MergedActorInput {
   websiteHostname: string | null
 }
 
-// Legacy alias retained for typed callers while the ingestion pipeline finishes migrating.
-// tap-consumer still normalizes a display title before scoring, so keep that one field here.
-export type ActivityRecord = OrganizationRecordBase & {
-  title?: string
-  shortDescription?: string
-  description?: LinearDocument
-}
+// Activity record used by ingestion and scoring.
+export type ActivityRecord = OrganizationRecordBase
 
 export interface ProfileSnapshot {
   did: string
