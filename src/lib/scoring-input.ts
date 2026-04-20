@@ -1,7 +1,7 @@
 import type { Main as OrganizationRecord } from '../lexicons/app/certified/actor/organization.defs'
 import type { Main as ProfileRecord } from '../lexicons/app/certified/actor/profile.defs'
 
-export type MergedDisplayNameSource = 'profile' | 'organizationType' | 'did'
+export type MergedDisplayNameSource = 'profile' | 'did'
 
 export interface MergedOrganizationUrlItem {
   url: string
@@ -35,15 +35,6 @@ function normalizeText(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
 
-function firstNonEmpty(values: Array<string | undefined | null>): string | null {
-  for (const value of values) {
-    const trimmed = normalizeText(value)
-    if (trimmed) return trimmed
-  }
-
-  return null
-}
-
 function shortDid(did: string): string {
   return did.replace(/^did:plc:/, '').slice(0, 12) + '…'
 }
@@ -51,15 +42,9 @@ function shortDid(did: string): string {
 function buildDisplayName(
   did: string,
   profileDisplayName: string | null,
-  organizationType: string[],
 ): { displayName: string; displayNameSource: MergedDisplayNameSource } {
   if (profileDisplayName) {
     return { displayName: profileDisplayName, displayNameSource: 'profile' }
-  }
-
-  const organizationTypeFallback = firstNonEmpty(organizationType)
-  if (organizationTypeFallback) {
-    return { displayName: organizationTypeFallback, displayNameSource: 'organizationType' }
   }
 
   return { displayName: shortDid(did), displayNameSource: 'did' }
@@ -85,7 +70,6 @@ export function buildMergedScoringInput(source: MergedScoringInputSource): Merge
   const { displayName, displayNameSource } = buildDisplayName(
     source.did,
     profileDisplayName,
-    organizationType,
   )
 
   return {
