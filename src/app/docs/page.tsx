@@ -7,7 +7,7 @@ const SCORING_CRITERIA = [
   {
     label: 'Display name',
     points: COMPLETENESS_WEIGHTS.displayName,
-    description: 'Awards points when the display name comes from profile data or organization type instead of the DID fallback.',
+    description: 'Awards points when the display name comes from profile data or organization type instead of the DID-derived fallback.',
   },
   {
     label: 'Description',
@@ -142,7 +142,8 @@ export default function DocsPage() {
               <span className='font-mono text-xs bg-secondary rounded px-1 py-0.5'>app.certified.actor.organization</span>{' '}
               records. Tap automatically discovers repos, backfills historical records from each PDS,
               and streams live events with cryptographic verification. The sidecar merges those records by DID
-              so the dashboard can show the profile alongside the organization context.
+              so the dashboard can show the profile alongside the organization context. When a profile record needs
+              fallback handling, the usable core fields are kept and malformed optional fields are ignored.
             </span>
           </li>
           <li className='flex gap-3'>
@@ -155,9 +156,9 @@ export default function DocsPage() {
           <li className='flex gap-3'>
             <span className='font-[family-name:var(--font-syne)] font-bold text-foreground shrink-0'>3.</span>
             <span>
-              The scoring engine runs an authenticity gate first. Any record that looks like placeholder or invalid
-              data is labeled <ScoreBadge tier='likely-test' /> before completeness scoring begins. Passing records
-              then receive the 100-point completeness score.
+              The scoring engine checks an authenticity gate first. Records with authenticity failures are labeled
+              <ScoreBadge tier='likely-test' /> before completeness scoring begins. Validation notes are shown
+              separately and do not affect tiering. Passing records then receive the 100-point completeness score.
             </span>
           </li>
           <li className='flex gap-3'>
@@ -176,7 +177,8 @@ export default function DocsPage() {
         </h2>
         <p className='text-sm text-muted-foreground'>
           Each passing organization record is evaluated on 13 completeness criteria for a maximum of 100 points. The
-          authenticity gate runs first, and labels stay attached to the organization record URI.
+          authenticity gate runs first, validation notes are informational only, and labels stay attached to the
+          organization record URI.
         </p>
         <div className='border border-border rounded-lg bg-card overflow-hidden'>
           <table className='w-full text-sm'>
@@ -221,15 +223,23 @@ export default function DocsPage() {
           Authenticity gate
         </h3>
         <p className='text-sm text-muted-foreground'>
-          Matching any gate failure forces <ScoreBadge tier='likely-test' />. There are no separate numeric deductions.
+          Matching any gate failure forces <ScoreBadge tier='likely-test' />. These are authenticity failures, not
+          validation notes, and there are no separate numeric deductions.
         </p>
         <div className='border border-border rounded-lg bg-card p-4 text-xs text-muted-foreground space-y-1'>
-          <p className='font-medium text-foreground text-xs'>Common failure patterns</p>
+          <p className='font-medium text-foreground text-xs'>Authenticity gate failure patterns</p>
           <ul className='space-y-1 pl-3'>
             <li>• Common junk values: <span className='font-mono bg-secondary rounded px-1'>test</span>, <span className='font-mono bg-secondary rounded px-1'>asdf</span>, <span className='font-mono bg-secondary rounded px-1'>lorem ipsum</span>, <span className='font-mono bg-secondary rounded px-1'>placeholder</span>, <span className='font-mono bg-secondary rounded px-1'>delete me</span>, <span className='font-mono bg-secondary rounded px-1'>ignore</span>, <span className='font-mono bg-secondary rounded px-1'>todo</span>, <span className='font-mono bg-secondary rounded px-1'>foo</span>, <span className='font-mono bg-secondary rounded px-1'>bar</span>, <span className='font-mono bg-secondary rounded px-1'>abc</span>, <span className='font-mono bg-secondary rounded px-1'>wip</span>, <span className='font-mono bg-secondary rounded px-1'>sample</span>, and <span className='font-mono bg-secondary rounded px-1'>example</span>.</li>
             <li>• Empty-style values: <span className='font-mono bg-secondary rounded px-1'>n/a</span>, <span className='font-mono bg-secondary rounded px-1'>none</span>, <span className='font-mono bg-secondary rounded px-1'>null</span>, <span className='font-mono bg-secondary rounded px-1'>undefined</span>, <span className='font-mono bg-secondary rounded px-1'>blank</span>, <span className='font-mono bg-secondary rounded px-1'>draft</span>, <span className='font-mono bg-secondary rounded px-1'>temp</span>, and <span className='font-mono bg-secondary rounded px-1'>tmp</span>.</li>
             <li>• Single-word greetings, repeated characters, and numeric-only values are also treated as test data.</li>
           </ul>
+        </div>
+        <div className='border border-border rounded-lg bg-card p-4 text-xs text-muted-foreground space-y-1'>
+          <p className='font-medium text-foreground text-xs'>Validation notes</p>
+          <p>
+            These are informational only. They can appear when fallback handling keeps usable profile fields and
+            drops malformed optional fields, and they do not imply suspicious activity or affect tiering.
+          </p>
         </div>
       </section>
 
@@ -239,7 +249,7 @@ export default function DocsPage() {
         </h2>
         <p className='text-sm text-muted-foreground'>
           Scores map to three tiers. Authenticity gate failures override the numeric score and always produce a
-          <ScoreBadge tier='likely-test' /> label.
+          <ScoreBadge tier='likely-test' /> label. Validation notes do not change the tier.
         </p>
         <div className='grid gap-3 sm:grid-cols-2'>
           {[
@@ -267,17 +277,6 @@ export default function DocsPage() {
               <p className='text-xs text-muted-foreground'>{detail}</p>
             </div>
           ))}
-        </div>
-        <div className='border border-border rounded-lg bg-card p-4 text-xs text-muted-foreground space-y-1'>
-          <p className='font-medium text-foreground text-xs'>Authenticity gate failure patterns</p>
-          <p>
-            Records are automatically flagged as <ScoreBadge tier='likely-test' /> when organization
-            metadata matches common junk values such as <span className='font-mono bg-secondary rounded px-1'>test</span>,{' '}
-            <span className='font-mono bg-secondary rounded px-1'>asdf</span>,{' '}
-            <span className='font-mono bg-secondary rounded px-1'>lorem ipsum</span>,{' '}
-            <span className='font-mono bg-secondary rounded px-1'>placeholder</span>, or when values are
-            repeated, numeric-only, or made of repeated characters.
-          </p>
         </div>
       </section>
 

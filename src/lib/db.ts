@@ -648,7 +648,7 @@ function rowToEntry(row: Record<string, unknown>): ActivityLogEntry {
     tier: row['tier'] as LabelTier,
     breakdown: row['breakdown'] as string,
     testSignals: row['test_signals'] as string,
-    validationNotes: JSON.parse(row['validation_notes'] as string) as string[],
+    validationNotes: parseValidationNotes(row['validation_notes'] as string | null | undefined) ?? [],
     labeledAt: row['labeled_at'] as string,
     hfLabel: (row['hf_label'] as string | null) ?? null,
     hfScore: (row['hf_score'] as number | null) ?? null,

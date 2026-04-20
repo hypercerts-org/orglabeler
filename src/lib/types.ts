@@ -33,6 +33,42 @@ export interface ProfileSnapshot {
   updatedAt: string
 }
 
+export type ProfileFallbackMode = 'fallback' | 'unusable'
+
+export type ProfileFallbackMedia =
+  | {
+      $type?: string
+      uri: string
+      image?: never
+    }
+  | {
+      $type?: string
+      image: Record<string, unknown>
+      uri?: never
+    }
+
+export interface ProfileFallbackProfile {
+  displayName: string | null
+  description: string | null
+  website: string | null
+  createdAt: string | null
+  avatar: ProfileFallbackMedia | null
+  banner: ProfileFallbackMedia | null
+}
+
+export interface ProfileFallbackUsableResult {
+  mode: 'fallback'
+  profile: ProfileFallbackProfile
+  validationNotes: string[]
+}
+
+export interface ProfileFallbackUnusableResult {
+  mode: 'unusable'
+  validationNotes: string[]
+}
+
+export type ProfileFallbackResult = ProfileFallbackUsableResult | ProfileFallbackUnusableResult
+
 export interface OrganizationSnapshot {
   did: string
   recordUri: string
@@ -89,6 +125,7 @@ export interface ActivityLogEntry {
   tier: LabelTier
   breakdown: string       // JSON-serialized ScoreBreakdown
   testSignals: string     // JSON-serialized string[]
+  validationNotes: string[]
   labeledAt: string       // ISO timestamp
   hfLabel?: string | null // HuggingFace classification label (nullable)
   hfScore?: number | null // HuggingFace classification confidence (nullable)

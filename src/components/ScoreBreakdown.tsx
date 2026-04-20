@@ -5,6 +5,7 @@ import type { ScoreBreakdown as ScoreBreakdownType } from '@/lib/types'
 
 interface ScoreBreakdownProps {
   breakdown: ScoreBreakdownType
+  validationNotes?: string[]
   testSignals: string[]
 }
 
@@ -31,7 +32,7 @@ function getBarColor(ratio: number): string {
   return 'bg-rose-500/70'
 }
 
-export function ScoreBreakdown({ breakdown, testSignals }: ScoreBreakdownProps) {
+export function ScoreBreakdown({ breakdown, validationNotes = [], testSignals }: ScoreBreakdownProps) {
   return (
     <div>
       <p className='mb-2 text-[11px] text-muted-foreground'>
@@ -59,6 +60,42 @@ export function ScoreBreakdown({ breakdown, testSignals }: ScoreBreakdownProps) 
           </div>
         )
       })}
+
+      {validationNotes.length > 0 && (
+        <div className='mt-2 p-2 rounded-md bg-sky-50 dark:bg-sky-500/10 border border-sky-200 dark:border-sky-500/20'>
+          <div className='flex items-center gap-1.5 mb-1'>
+            <svg
+              width='12'
+              height='12'
+              viewBox='0 0 12 12'
+              fill='none'
+              xmlns='http://www.w3.org/2000/svg'
+              className='shrink-0'
+            >
+              <circle cx='6' cy='6' r='5' stroke='currentColor' strokeWidth='1.2' className='text-sky-700 dark:text-sky-400' />
+              <path
+                d='M6 3.6V6.3'
+                stroke='currentColor'
+                strokeWidth='1.2'
+                strokeLinecap='round'
+                className='text-sky-700 dark:text-sky-400'
+              />
+              <circle cx='6' cy='8.4' r='0.5' fill='currentColor' className='text-sky-700 dark:text-sky-400' />
+            </svg>
+            <span className='text-[11px] font-medium text-sky-700 dark:text-sky-400'>
+              Validation notes
+            </span>
+          </div>
+          <p className='mb-1 pl-4 text-[10px] text-sky-600 dark:text-sky-400/80'>
+            Informational only; these notes do not imply suspicious activity or affect tiering.
+          </p>
+          {validationNotes.map((note, i) => (
+            <div key={i} className='pl-4 text-[10px] text-sky-600 dark:text-sky-400/80'>
+              • {note}
+            </div>
+          ))}
+        </div>
+      )}
 
       {testSignals.length > 0 && (
         <div className='mt-2 p-2 rounded-md bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20'>

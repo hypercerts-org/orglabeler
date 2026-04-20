@@ -42,6 +42,29 @@ function isRuntimeLabelTier(tier: string): tier is RuntimeLabelTier {
   return tier === 'likely-test' || tier === 'standard' || tier === 'high-quality'
 }
 
+function summarizeValidationNotes(validationNotes: string[]): { noteCount: number; noteSummary: string } {
+  const noteCount = validationNotes.length
+
+  if (noteCount === 0) {
+    return {
+      noteCount,
+      noteSummary: 'no validation notes',
+    }
+  }
+
+  if (noteCount <= 2) {
+    return {
+      noteCount,
+      noteSummary: validationNotes.join('; '),
+    }
+  }
+
+  return {
+    noteCount,
+    noteSummary: `${validationNotes.slice(0, 2).join('; ')}; +${noteCount - 2} more`,
+  }
+}
+
 function buildHfText(
   profileSnapshot: ReturnType<typeof getProfileSnapshot>,
   organization: ActivityRecord,
@@ -231,18 +254,32 @@ indexer.record(async (evt) => {
         updatedAt: new Date().toISOString(),
       })
 
-      logger.info(eventMeta, 'Stored validated profile snapshot')
+      logger.info({ ...eventMeta, ingestMode: 'strict' }, 'Stored strict profile snapshot')
     } else {
-      logger.warn({ ...eventMeta, reason: parsed.reason?.message }, 'Profile record failed strict lexicon validation; attempting fallback')
+      logger.warn(
+        { ...eventMeta, reason: parsed.reason?.message },
+        'Profile record failed strict lexicon validation; attempting fallback'
+      )
 
       const fallback = salvageProfileFallback(evt.record)
       if (fallback.mode === 'unusable') {
+        const { noteCount, noteSummary } = summarizeValidationNotes(fallback.validationNotes)
+
         logger.warn(
-          { ...eventMeta, reason: parsed.reason?.message, validationNotes: fallback.validationNotes },
-          'Profile record was unusable after fallback — skipping',
+          {
+            ...eventMeta,
+            ingestMode: 'fallback',
+            reason: parsed.reason?.message,
+            noteCount,
+            noteSummary,
+            fallbackReason: fallback.validationNotes[0],
+          },
+          'Profile record was unusable after fallback; skipping',
         )
         return
       }
+
+      const { noteCount, noteSummary } = summarizeValidationNotes(fallback.validationNotes)
 
       upsertProfileSnapshot({
         did: evt.did,
@@ -253,7 +290,15 @@ indexer.record(async (evt) => {
         updatedAt: new Date().toISOString(),
       })
 
-      logger.info({ ...eventMeta, validationNotes: fallback.validationNotes }, 'Stored fallback profile snapshot')
+      logger.info(
+        {
+          ...eventMeta,
+          ingestMode: 'fallback',
+          noteCount,
+          noteSummary,
+        },
+        'Stored fallback profile snapshot'
+      )
     }
 
     if (getOrganizationSnapshot(evt.did)) {

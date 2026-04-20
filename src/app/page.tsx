@@ -6,6 +6,13 @@ import { StatsOverview } from '@/components/StatsOverview'
 import { ActivityFeed } from '@/components/ActivityFeed'
 import type { LabelStats, ActivityLogEntry } from '@/lib/types'
 
+function normalizeActivity(entry: ActivityLogEntry): ActivityLogEntry {
+  return {
+    ...entry,
+    validationNotes: Array.isArray(entry.validationNotes) ? entry.validationNotes : [],
+  }
+}
+
 export default function DashboardPage() {
   const [stats, setStats] = useState<LabelStats | null>(null)
   const [activities, setActivities] = useState<ActivityLogEntry[]>([])
@@ -22,7 +29,7 @@ export default function DashboardPage() {
       const statsData = await statsRes.json()
       const recentData = await recentRes.json()
       setStats(statsData.stats)
-      setActivities(recentData.activities)
+      setActivities((recentData.activities as ActivityLogEntry[]).map(normalizeActivity))
       setError(null)
     } catch (error) {
       console.error('Failed to fetch dashboard data:', error)

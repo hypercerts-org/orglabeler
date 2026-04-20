@@ -4,6 +4,13 @@ import { useState, useEffect, useCallback } from 'react'
 import { ActivityFeed } from '@/components/ActivityFeed'
 import type { ActivityLogEntry, RuntimeLabelTier } from '@/lib/types'
 
+function normalizeActivity(entry: ActivityLogEntry): ActivityLogEntry {
+  return {
+    ...entry,
+    validationNotes: Array.isArray(entry.validationNotes) ? entry.validationNotes : [],
+  }
+}
+
 const filterOptions: { label: string; value: RuntimeLabelTier | 'all' }[] = [
   { label: 'All', value: 'all' },
   { label: '⚠ Likely Test', value: 'likely-test' },
@@ -48,10 +55,10 @@ export default function FeedPage() {
         const data = await res.json()
 
         if (reset) {
-          setActivities(data.activities)
+          setActivities((data.activities as ActivityLogEntry[]).map(normalizeActivity))
           setOffset(LIMIT)
         } else {
-          setActivities(prev => [...prev, ...data.activities])
+          setActivities(prev => [...prev, ...(data.activities as ActivityLogEntry[]).map(normalizeActivity)])
           setOffset(prev => prev + LIMIT)
         }
         setTotal(data.total)
@@ -77,9 +84,10 @@ export default function FeedPage() {
       if (!res.ok) throw new Error('API error')
       const data = await res.json()
       setActivities(prev => {
-        if (data.activities[0]?.uri === prev[0]?.uri) return prev
+        const normalizedActivities = (data.activities as ActivityLogEntry[]).map(normalizeActivity)
+        if (normalizedActivities[0]?.uri === prev[0]?.uri) return prev
         // Merge: replace first page, keep any extra loaded pages
-        return [...data.activities, ...prev.slice(LIMIT)]
+        return [...normalizedActivities, ...prev.slice(LIMIT)]
       })
       setTotal(data.total)
       // Do NOT reset offset — preserve load-more position
