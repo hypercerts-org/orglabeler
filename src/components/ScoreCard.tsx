@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import type { ActivityLogEntry, ScoreBreakdown as ScoreBreakdownType, LabelTier } from '@/lib/types'
+import { ORGANIZATION_COLLECTION } from '@/lib/config'
+import { buildRecordUrl } from '@/lib/record-url'
 import { ScoreBadge } from './ScoreBadge'
 import { ScoreBreakdown } from './ScoreBreakdown'
 
@@ -48,7 +50,7 @@ export function ScoreCard({ entry, defaultExpanded = false }: ScoreCardProps) {
   } catch { /* use empty */ }
 
   const shortDid = entry.did.replace('did:plc:', '').slice(0, 12) + '…'
-  const recordUrl = `/feed?did=${encodeURIComponent(entry.did)}&collection=app.certified.actor.organization&rkey=${entry.rkey}`
+  const recordUrl = buildRecordUrl(entry.did, ORGANIZATION_COLLECTION, entry.rkey)
   const barColor = TIER_BAR_COLORS[entry.tier]
   const relativeTime = getRelativeTime(entry.labeledAt)
 
