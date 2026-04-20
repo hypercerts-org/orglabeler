@@ -1,6 +1,6 @@
 import { HfInference } from '@huggingface/inference'
 import * as config from './config'
-import { updateActivityHfFields, getActivityByDidRkey, getHfClassifiedNonFlagged } from './db'
+import { HF_POSITIVE_LABEL, updateActivityHfFields, getActivityByDidRkey, getHfClassifiedNonFlagged } from './db'
 import { tierForScore } from './scorer'
 import { updateActivity } from './db'
 
@@ -11,7 +11,7 @@ export interface ContentClassification {
 }
 
 const CANDIDATE_LABELS = [
-  'well-formed actor profile',
+  HF_POSITIVE_LABEL,
   'test or placeholder data',
   'song lyrics or copypasta',
   'spam or gibberish',

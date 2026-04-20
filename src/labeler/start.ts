@@ -3,7 +3,12 @@ import fs from 'node:fs'
 import { HOST, LABELER_PORT, METRICS_PORT, TAP_URL, APP_DB_PATHS } from '../lib/config'
 import { getPendingActivities, deleteActivity } from '../lib/db'
 import { labelerServer, negateAllDIDLabels, applyQualityLabel } from './server'
-import { startTapConsumer, backfillHfClassification, syncLabelsWithDb, reconcileStoredOrganizationSnapshots } from './tap-consumer'
+import {
+  startTapConsumer,
+  backfillHfClassification,
+  syncLabelsWithDb,
+  reconcileStoredOrganizationSnapshots,
+} from './tap-consumer'
 import { setReclassifyCallback } from '../lib/hf-classifier'
 import { startMetricsServer } from './metrics'
 import logger from './logger'
@@ -103,16 +108,16 @@ async function main() {
     }
   }
 
-  // Reconcile local organization snapshots before steady-state ingestion begins.
+  // 8. Reconcile local organization snapshots before steady-state ingestion begins.
   await reconcileStoredOrganizationSnapshots()
 
-  // 3. Wait for external Tap service
+  // 9. Wait for external Tap service
   logger.info('Waiting for external Tap health...')
 
-  // 4. Wait for tap to be ready
+  // 10. Wait for tap to be ready
   await waitForTap(TAP_URL)
 
-  // 5. Start tap consumer (replaces Jetstream subscription)
+  // 11. Start tap consumer (replaces Jetstream subscription)
   consumer = startTapConsumer()
   logger.info('Tap consumer started — receiving backfill + live events')
   backfillHfClassification()
