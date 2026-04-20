@@ -33,6 +33,8 @@ const TIER_BAR_COLORS: Record<LabelTier, string> = {
   'likely-test': 'bg-rose-500/60',
 }
 
+const HF_POSITIVE_LABEL = 'well-formed actor profile'
+
 export function ScoreCard({ entry, defaultExpanded = false }: ScoreCardProps) {
   const [expanded, setExpanded] = useState(defaultExpanded)
 
@@ -73,7 +75,7 @@ export function ScoreCard({ entry, defaultExpanded = false }: ScoreCardProps) {
         <span className='text-[10px] text-muted-foreground/60'>{relativeTime}</span>
       </div>
 
-      {/* Title row */}
+      {/* Display name row */}
       <div className='px-3 pb-1'>
         <a
           href={recordUrl}
@@ -82,7 +84,7 @@ export function ScoreCard({ entry, defaultExpanded = false }: ScoreCardProps) {
           className='text-sm font-medium text-foreground truncate hover:text-primary hover:underline inline-flex items-center gap-1 max-w-full'
           onClick={e => e.stopPropagation()}
         >
-          <span className='truncate'>{entry.title}</span>
+          <span className='truncate'>{entry.displayName}</span>
           <span className='text-muted-foreground shrink-0'>↗</span>
         </a>
       </div>
@@ -108,10 +110,10 @@ export function ScoreCard({ entry, defaultExpanded = false }: ScoreCardProps) {
           <span
             className='inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full'
             style={{
-              backgroundColor: entry.hfLabel === 'meaningful project description'
+              backgroundColor: entry.hfLabel === HF_POSITIVE_LABEL
                 ? 'oklch(0.8 0.15 145 / 0.2)'
                 : 'oklch(0.8 0.15 80 / 0.2)',
-              color: entry.hfLabel === 'meaningful project description'
+              color: entry.hfLabel === HF_POSITIVE_LABEL
                 ? 'oklch(0.55 0.15 145)'
                 : 'oklch(0.55 0.15 80)',
             }}

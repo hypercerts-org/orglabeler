@@ -1,8 +1,8 @@
 # Certified Organization Labeler
 
-> Automated quality scoring for `app.certified.actor.organization` records on AT Protocol
+> Automated quality scoring for merged `app.certified.actor.profile` + `app.certified.actor.organization` data on AT Protocol
 
-This fork monitors `app.certified.actor.organization` records and labels organizations based on how complete, consistent, and non-placeholder the record data looks.
+This fork monitors both `app.certified.actor.profile` and `app.certified.actor.organization` records, merges them by DID for display and classification context, and labels organizations based on how complete, consistent, and non-placeholder the organization record looks.
 
 ## Labels
 
@@ -60,6 +60,8 @@ The runtime is split into three pieces:
 - AT Protocol relay → separate Tap service
 - Tap service → labeler process over `TAP_URL`
 - Labeler process → `labels.db` + `activity-log.db`
+
+The Tap sidecar listens to both `app.certified.actor.profile` and `app.certified.actor.organization`, merges them by DID for actor context, and still applies labels to the organization record URI.
 
 The Next.js dashboard reads from `activity-log.db`.
 

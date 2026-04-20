@@ -116,6 +116,52 @@ function scoreDate(
   return points
 }
 
+function scoreRepetitionPenalty(record: ActivityRecord): number {
+  let penalty = 0
+
+  const orgTypes = (record.organizationType ?? [])
+    .map(normalizeText)
+    .filter(value => value.length > 0)
+
+  const duplicateOrgTypes = orgTypes.length - new Set(orgTypes.map(value => value.toLowerCase())).size
+  if (duplicateOrgTypes > 0) {
+    penalty -= duplicateOrgTypes * 5
+  }
+
+  const items = Array.isArray(record.urls) ? record.urls : []
+  const seenUrls = new Set<string>()
+  const seenLabels = new Set<string>()
+  let duplicateUrls = 0
+  let duplicateLabels = 0
+
+  for (const item of items) {
+    const url = normalizeText(item?.url)
+    const label = normalizeText(item?.label)
+
+    if (url) {
+      const normalizedUrl = url.toLowerCase()
+      if (seenUrls.has(normalizedUrl)) duplicateUrls += 1
+      else seenUrls.add(normalizedUrl)
+    }
+
+    if (label) {
+      const normalizedLabel = label.toLowerCase()
+      if (seenLabels.has(normalizedLabel)) duplicateLabels += 1
+      else seenLabels.add(normalizedLabel)
+    }
+  }
+
+  if (duplicateUrls > 0) {
+    penalty -= duplicateUrls * 5
+  }
+
+  if (duplicateLabels > 0) {
+    penalty -= duplicateLabels * 5
+  }
+
+  return penalty
+}
+
 export function scoreActivity(record: ActivityRecord): ScoreResult {
   const testSignals: string[] = []
 
@@ -124,6 +170,7 @@ export function scoreActivity(record: ActivityRecord): ScoreResult {
   const location = scoreLocation(record.location)
   const foundedDate = scoreDate(record.foundedDate, 'foundedDate', 15, testSignals)
   const createdAt = scoreDate(record.createdAt, 'createdAt', 15, testSignals)
+  const repetitionPenalty = scoreRepetitionPenalty(record)
 
   if (organizationType === 0 && urls === 0 && location === 0 && foundedDate === 0) {
     testSignals.push('organization metadata is minimal')
@@ -144,10 +191,11 @@ export function scoreActivity(record: ActivityRecord): ScoreResult {
     hasLocations: Math.min(5, location),
     hasDateRange: foundedDate > 0 ? 5 : 0,
     hasRights: createdAt > 0 ? 5 : 0,
-    repetitionFlags: 0,
+    repetitionPenalty,
+    repetitionFlags: repetitionPenalty,
   }
 
-  const totalScore = Math.min(100, Math.max(0, organizationType + urls + location + foundedDate + createdAt))
+  const totalScore = Math.min(100, Math.max(0, organizationType + urls + location + foundedDate + createdAt + repetitionPenalty))
   const tier = tierForScore(totalScore, testSignals)
 
   return {

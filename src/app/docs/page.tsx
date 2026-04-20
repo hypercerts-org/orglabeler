@@ -59,7 +59,7 @@ export default function DocsPage() {
           Documentation
         </h1>
         <p className='text-sm text-muted-foreground mt-1'>
-          How the certified organization labeler scores and labels organization records on AT Protocol.
+          How the certified organization labeler merges profile and organization records, then scores and labels the organization record on AT Protocol.
         </p>
       </div>
 
@@ -71,10 +71,10 @@ export default function DocsPage() {
         <div className='border border-border rounded-lg bg-card p-4 overflow-x-auto'>
           <div className='flex items-center gap-2 min-w-max'>
             {[
-              { step: 'Organization Record Created', sub: 'on AT Protocol' },
-              { step: 'Detected', sub: 'via Tap' },
-              { step: 'Scored', sub: '5 rubric fields + test signals' },
-              { step: 'Labeled', sub: 'signed label applied to the record URI' },
+              { step: 'Profile + Organization Records', sub: 'collected together by Tap' },
+              { step: 'Merged by DID', sub: 'for actor context' },
+              { step: 'Scored', sub: 'organization data + test signals' },
+              { step: 'Labeled', sub: 'signed label applied to the organization record URI' },
             ].map(({ step, sub }, i, arr) => (
               <div key={step} className='flex items-center gap-2'>
                 <div className='flex flex-col items-center gap-0.5'>
@@ -95,11 +95,13 @@ export default function DocsPage() {
             <span>
               The certified organization labeler uses{' '}
               <span className='font-mono text-xs bg-secondary rounded px-1 py-0.5'>Tap</span>{' '}
-              — Bluesky&apos;s official sync tool — to monitor the AT Protocol network for{' '}
+              — Bluesky&apos;s official sync tool — to monitor the AT Protocol network for both{' '}
+              <span className='font-mono text-xs bg-secondary rounded px-1 py-0.5'>app.certified.actor.profile</span>{' '}
+              and{' '}
               <span className='font-mono text-xs bg-secondary rounded px-1 py-0.5'>app.certified.actor.organization</span>{' '}
               records. Tap automatically discovers repos, backfills historical records from each PDS,
-              and streams live events with cryptographic verification. This means records created
-              before the labeler started are still scored.
+              and streams live events with cryptographic verification. The sidecar merges those records by DID
+              so the dashboard can show the profile alongside the organization context.
             </span>
           </li>
           <li className='flex gap-3'>
@@ -112,7 +114,7 @@ export default function DocsPage() {
           <li className='flex gap-3'>
             <span className='font-[family-name:var(--font-syne)] font-bold text-foreground shrink-0'>3.</span>
             <span>
-              The scoring engine evaluates the record against 5 rubric fields worth 100 points in total.
+              The scoring engine evaluates the organization record against 5 rubric fields worth 100 points in total.
               Test signals are checked first — any record that looks like placeholder data is labeled
               <ScoreBadge tier='likely-test' /> regardless of its numeric score.
             </span>
@@ -120,7 +122,7 @@ export default function DocsPage() {
           <li className='flex gap-3'>
             <span className='font-[family-name:var(--font-syne)] font-bold text-foreground shrink-0'>4.</span>
             <span>
-              A signed AT Protocol label is applied to the record URI based on the score tier.
+              A signed AT Protocol label is applied to the organization record URI based on the score tier.
               When a record is rescored, the previous label is negated and replaced with the new one.
             </span>
           </li>
@@ -132,7 +134,8 @@ export default function DocsPage() {
           Scoring criteria
         </h2>
         <p className='text-sm text-muted-foreground'>
-          Each organization record is evaluated on 5 criteria for a maximum of 100 points.
+          Each organization record is evaluated on 5 criteria for a maximum of 100 points. Profile data is carried
+          along for context, but labels stay attached to the organization record URI.
         </p>
         <div className='border border-border rounded-lg bg-card overflow-hidden'>
           <table className='w-full text-sm'>
@@ -184,7 +187,7 @@ export default function DocsPage() {
           <ul className='space-y-1 pl-3'>
             <li>• Common junk values: <span className='font-mono bg-secondary rounded px-1'>test</span>, <span className='font-mono bg-secondary rounded px-1'>asdf</span>, <span className='font-mono bg-secondary rounded px-1'>lorem ipsum</span>, <span className='font-mono bg-secondary rounded px-1'>placeholder</span>, <span className='font-mono bg-secondary rounded px-1'>delete me</span>, <span className='font-mono bg-secondary rounded px-1'>ignore</span>, <span className='font-mono bg-secondary rounded px-1'>todo</span>, <span className='font-mono bg-secondary rounded px-1'>foo</span>, <span className='font-mono bg-secondary rounded px-1'>bar</span>, <span className='font-mono bg-secondary rounded px-1'>abc</span>, <span className='font-mono bg-secondary rounded px-1'>wip</span>, <span className='font-mono bg-secondary rounded px-1'>sample</span>, and <span className='font-mono bg-secondary rounded px-1'>example</span>.</li>
             <li>• Empty-style values: <span className='font-mono bg-secondary rounded px-1'>n/a</span>, <span className='font-mono bg-secondary rounded px-1'>none</span>, <span className='font-mono bg-secondary rounded px-1'>null</span>, <span className='font-mono bg-secondary rounded px-1'>undefined</span>, <span className='font-mono bg-secondary rounded px-1'>blank</span>, <span className='font-mono bg-secondary rounded px-1'>draft</span>, <span className='font-mono bg-secondary rounded px-1'>temp</span>, and <span className='font-mono bg-secondary rounded px-1'>tmp</span>.</li>
-            <li>• Single-word greetings, repeated characters, and numeric-only titles are also treated as test data.</li>
+            <li>• Single-word greetings, repeated characters, and numeric-only values are also treated as test data.</li>
           </ul>
         </div>
       </section>
@@ -243,7 +246,7 @@ export default function DocsPage() {
         </h2>
         <p className='text-sm text-muted-foreground'>
           The certified organization labeler exposes a small REST API for the dashboard as well as the standard AT Protocol
-          labeler XRPC endpoint.
+          labeler XRPC endpoint. Labels are still published against the organization record URI.
         </p>
         <div className='space-y-4'>
           {API_ENDPOINTS.map(({ method, path, description, curl }) => (
@@ -309,7 +312,8 @@ export default function DocsPage() {
             <span className='text-foreground shrink-0'>—</span>
             <span>
               Apps can subscribe to the labeler to automatically receive organization quality signals for
-              app.certified.actor.organization records and filter or sort them by tier.
+              app.certified.actor.organization records and filter or sort them by tier. The related profile record is
+              used for merged actor context, not for the label target.
             </span>
           </li>
           <li className='flex gap-2'>

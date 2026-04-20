@@ -1,5 +1,6 @@
 import type { Main as OrganizationRecordBase } from '../lexicons/app/certified/actor/organization.defs'
 import type { Main as ProfileRecordBase } from '../lexicons/app/certified/actor/profile.defs'
+
 // Organization record — re-exported from generated lexicon types
 // The canonical shape is defined in lexicons/app/certified/actor/organization.json
 export type { Main as OrganizationRecord } from '../lexicons/app/certified/actor/organization.defs'
@@ -63,6 +64,9 @@ export interface ScoreBreakdown {
   foundedDate: number
   createdAt: number
 
+  // Negative penalty for repeated or duplicated organization metadata.
+  repetitionPenalty?: number
+
   // Legacy compatibility aliases for the existing dashboard breakdown view.
   titleQuality: number
   shortDescQuality: number
@@ -87,7 +91,7 @@ export interface ActivityLogEntry {
   did: string
   rkey: string
   uri: string
-  title: string
+  displayName: string
   score: number
   tier: LabelTier
   breakdown: string       // JSON-serialized ScoreBreakdown
@@ -95,6 +99,8 @@ export interface ActivityLogEntry {
   labeledAt: string       // ISO timestamp
   hfLabel?: string | null // HuggingFace classification label (nullable)
   hfScore?: number | null // HuggingFace classification confidence (nullable)
+  // Legacy ingestion alias retained for the existing labeler caller until it migrates.
+  title?: string
 }
 
 // Stats

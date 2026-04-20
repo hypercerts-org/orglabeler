@@ -36,7 +36,7 @@ export function ActivityFeed({
       {/* Empty state */}
       {!loading && activities.length === 0 && (
         <div className='flex flex-col items-center justify-center h-40 text-muted-foreground'>
-          <p className='italic'>Waiting for organization records...</p>
+          <p className='italic'>Waiting for organization actors...</p>
           <p className='text-xs mt-1'>Listening for app.certified.actor.organization</p>
         </div>
       )}

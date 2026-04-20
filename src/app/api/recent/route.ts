@@ -4,6 +4,11 @@ import type { ActivityLogEntry, RuntimeLabelTier } from '@/lib/types'
 
 const VALID_TIERS: RuntimeLabelTier[] = ['likely-test', 'standard', 'high-quality']
 
+type RecentActivityResponse = Omit<ActivityLogEntry, 'title' | 'breakdown' | 'testSignals'> & {
+  breakdown: Record<string, unknown>
+  testSignals: string[]
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
@@ -38,9 +43,9 @@ export async function GET(request: Request) {
       total = getTotalCount()
     }
 
-    // Parse JSON strings in each entry before returning
-    const parsed = activities.map(a => {
-      let breakdown = {}
+    // Parse JSON strings in each entry before returning, preserving displayName.
+    const parsed: RecentActivityResponse[] = activities.map(a => {
+      let breakdown: Record<string, unknown> = {}
       let testSignals: string[] = []
       try { breakdown = JSON.parse(a.breakdown) } catch { /* use empty */ }
       try { testSignals = JSON.parse(a.testSignals) } catch { /* use empty */ }

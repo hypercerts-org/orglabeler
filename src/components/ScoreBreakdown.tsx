@@ -8,15 +8,11 @@ interface ScoreBreakdownProps {
 }
 
 const CRITERIA: Array<{ label: string; field: keyof ScoreBreakdownType; max: number }> = [
-  { label: 'Title', field: 'titleQuality', max: 15 },
-  { label: 'Summary', field: 'shortDescQuality', max: 15 },
-  { label: 'Description', field: 'descriptionQuality', max: 20 },
-  { label: 'Image', field: 'hasImage', max: 10 },
-  { label: 'Work Scope', field: 'hasWorkScope', max: 10 },
-  { label: 'Contributors', field: 'contributorQuality', max: 15 },
-  { label: 'Locations', field: 'hasLocations', max: 5 },
-  { label: 'Date Range', field: 'hasDateRange', max: 5 },
-  { label: 'Rights', field: 'hasRights', max: 5 },
+  { label: 'Organization Type', field: 'organizationType', max: 30 },
+  { label: 'URLs', field: 'urls', max: 30 },
+  { label: 'Location', field: 'location', max: 20 },
+  { label: 'Founded Date', field: 'foundedDate', max: 15 },
+  { label: 'Created At', field: 'createdAt', max: 15 },
 ]
 
 function getBarColor(ratio: number): string {
@@ -27,10 +23,12 @@ function getBarColor(ratio: number): string {
 }
 
 export function ScoreBreakdown({ breakdown, testSignals }: ScoreBreakdownProps) {
+  const repetitionPenalty = breakdown.repetitionPenalty ?? breakdown.repetitionFlags
+
   return (
     <div>
       {CRITERIA.map(({ label, field, max }) => {
-        const value = breakdown[field]
+        const value = breakdown[field] ?? 0
         const ratio = max > 0 ? value / max : 0
         const widthPct = Math.round(ratio * 100)
         const barColor = getBarColor(ratio)
@@ -51,14 +49,17 @@ export function ScoreBreakdown({ breakdown, testSignals }: ScoreBreakdownProps) 
         )
       })}
 
-      {breakdown.repetitionFlags < 0 && (
+      {repetitionPenalty < 0 && (
         <div className='flex items-center gap-3 py-1'>
           <span className='text-[11px] text-rose-500 w-28 shrink-0'>Repetition</span>
           <div className='flex-1 h-1 rounded-full bg-secondary overflow-hidden'>
-            <div className='h-full rounded-full bg-rose-500/70' style={{ width: `${Math.min(100, Math.abs(breakdown.repetitionFlags) * 6.67)}%` }} />
+            <div
+              className='h-full rounded-full bg-rose-500/70'
+              style={{ width: `${Math.min(100, Math.abs(repetitionPenalty) * 6.67)}%` }}
+            />
           </div>
           <span className='text-[11px] text-rose-500 font-mono w-10 text-right'>
-            {breakdown.repetitionFlags}
+            {repetitionPenalty}
           </span>
         </div>
       )}

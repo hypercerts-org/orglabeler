@@ -90,7 +90,7 @@ export default function DashboardPage() {
       <div>
         <div className='flex items-center justify-between mb-3'>
           <h2 className='font-[family-name:var(--font-syne)] text-lg font-bold'>
-            Recent Records
+            Recent Organization Records
           </h2>
           <Link
             href='/feed'

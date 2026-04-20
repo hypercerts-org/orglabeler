@@ -118,7 +118,7 @@ export default function FeedPage() {
       {/* Search input */}
       <input
         type='text'
-        placeholder='Search by title or DID...'
+        placeholder='Search by organization name or DID...'
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
         className='w-full px-3 py-2 text-sm bg-secondary border border-border rounded-lg placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary'
