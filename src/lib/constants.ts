@@ -22,24 +22,24 @@ export const LABELS: LabelDefinition[] = [
   },
 ]
 
+// Raw completeness weights sum to 100 points.
 export const COMPLETENESS_WEIGHTS = {
   displayName: 5,
   description: 10,
-  organizationType: 10,
+  organizationType: 5,
   websitePresent: 10,
   websiteResolves: 15,
   websiteMatchesName: 5,
   organizationUrlsPresent: 5,
   organizationUrlsResolve: 5,
-  locationValid: 15,
+  locationValid: 10,
   foundedDateValid: 5,
-  foundedDateAge: 10,
+  foundedDateAge: 5,
   avatar: 10,
   banner: 10,
 } as const
 
-// Final score bands are intentionally coarse and should stay readable here:
-// 0-44 => likely-test, 45-74 => standard, 75-100 => high-quality.
+// Final score bands are intentionally coarse and should stay readable here.
 export const SCORE_THRESHOLDS: Record<RuntimeQualityTier, { min: number; max: number }> = {
   'likely-test': { min: 0, max: 44 },
   standard: { min: 45, max: 74 },
@@ -55,6 +55,7 @@ export const FOUNDED_DATE_AGE_BUCKETS = {
   },
 } as const
 
+// Declared raw total for the completeness model.
 export const COMPLETENESS_WEIGHT_TOTAL = 100
 
 export const TEST_PATTERNS: RegExp[] = [
@@ -86,7 +87,6 @@ export const AUTHENTICITY_TEXT_PATTERNS: RegExp[] = [
   /^placeholder$/i,
   /^dummy$/i,
   /^mock$/i,
-  /^sample$/i,
   /^tbd$/i,
   /^coming soon$/i,
   /^not set$/i,

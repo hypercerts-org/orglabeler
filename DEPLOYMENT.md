@@ -13,9 +13,9 @@ Current scripts:
 
 - `npm run build` → `next build`
 - `npm run start` → `next start`
-- `npm run dev:service` → runs `npm run dev` and `npm run dev:labeler` together
-- `npm run dev:labeler` → `tsx src/labeler/start.ts`
-- `npm run start:service` → runs `npm run start` and `npm run dev:labeler` together
+- `npm run dev:service` → runs `npm run dev` and `npm run labeler` together
+- `npm run labeler` → `tsx src/labeler/start.ts`
+- `npm run start:service` → runs `npm run start` and `npm run labeler` together
 
 For hosted deployment, the image build uses `scripts/build.sh`, which sets `NEXT_PUBLIC_DEPLOY_TIME` and then runs `npm run build`.
 

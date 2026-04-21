@@ -49,7 +49,8 @@ export async function GET(request: Request) {
       let testSignals: string[] = []
       try { breakdown = JSON.parse(a.breakdown) } catch { /* use empty */ }
       try { testSignals = JSON.parse(a.testSignals) } catch { /* use empty */ }
-      return { ...a, breakdown, testSignals, hfLabel: a.hfLabel ?? null, hfScore: a.hfScore ?? null }
+      const { title: _title, ...rest } = a
+      return { ...rest, breakdown, testSignals, hfLabel: a.hfLabel ?? null, hfScore: a.hfScore ?? null }
     })
 
     return NextResponse.json({ activities: parsed, total })

@@ -168,7 +168,8 @@ export async function scoreActivity(record: MergedScoringInput): Promise<ScoreRe
     banner,
   }
 
-  const totalScore = Math.min(100, Object.values(breakdown).reduce((sum, value) => sum + value, 0))
+  const rawScore = Object.values(breakdown).reduce((sum, value) => sum + value, 0)
+  const totalScore = rawScore
   const tier = tierForScore(totalScore)
 
   return {

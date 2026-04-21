@@ -656,14 +656,29 @@ function rowToEntry(row: Record<string, unknown>): ActivityLogEntry {
 }
 
 function snapshotRowToEntry<T>(row: SnapshotRow): SnapshotRecord<T> {
+  const validationNotes: string[] = []
+  const payload = parseSnapshotPayload<T>(row.payload, validationNotes)
+  const rowNotes = parseValidationNotes(row.validation_notes)
+
+  if (rowNotes) validationNotes.push(...rowNotes)
+
   return {
     did: row.did,
     recordUri: row.record_uri,
     rkey: row.rkey,
-    payload: JSON.parse(row.payload) as T,
+    payload,
     updatedAt: row.updated_at,
-    validationNotes: parseValidationNotes(row.validation_notes),
+    validationNotes: validationNotes.length > 0 ? validationNotes : undefined,
   } as SnapshotRecord<T>
+}
+
+function parseSnapshotPayload<T>(value: string, validationNotes: string[]): T {
+  try {
+    return JSON.parse(value) as T
+  } catch {
+    validationNotes.push('Snapshot payload JSON failed to parse')
+    return {} as T
+  }
 }
 
 function parseValidationNotes(value: string | null | undefined): string[] | undefined {

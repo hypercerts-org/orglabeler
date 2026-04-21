@@ -48,7 +48,7 @@ npm run dev:service
 
 # Or start separately:
 npm run dev            # Dashboard on http://localhost:3000
-npm run dev:labeler    # Labeler backend on port 4100 + metrics on 4101
+npm run labeler        # Labeler backend on port 4100 + metrics on 4101
 ```
 
 Tap runs as a separate service. Point `TAP_URL` at that service's URL; there is no localhost fallback and the app will not start without it.
@@ -69,15 +69,23 @@ The labeler auto-detects the PDS for non-bsky.social accounts via DID document r
 
 ## Scoring
 
-Scores `app.certified.actor.organization` records on 5 signals (100 points total):
+Scores `app.certified.actor.organization` records on 13 completeness signals (100 points total):
 
 | Signal | Max Points | What it checks |
 |--------|-----------|----------------|
-| Organization Type | 30 | Whether the record has a useful set of organization type values |
-| URLs | 30 | Presence of valid, unique, non-local website links |
-| Location | 20 | Whether a location is provided |
-| Founded Date | 15 | Valid founding date |
-| Created Date | 15 | Valid creation date |
+| Display Name | 5 | Uses a real display name instead of DID-only fallback |
+| Description | 10 | Has a profile description |
+| Organization Type | 5 | Includes at least one organization type value |
+| Website Present | 10 | Has a public website URL |
+| Website Resolves | 15 | Public website resolves successfully |
+| Website Matches Name | 5 | Website domain matches the display name |
+| Organization URLs Present | 5 | Includes at least one organization URL |
+| Organization URLs Resolve | 5 | At least one organization URL resolves successfully |
+| Location | 10 | Has a valid organization location reference |
+| Founded Date | 5 | Has a valid founded date |
+| Founded Date Age | 5 | Founded date is at least one year old |
+| Avatar | 10 | Has an avatar image |
+| Banner | 10 | Has a banner image |
 
 Test detection: regex patterns catch common placeholder strings (`test`, `asdf`, `lorem ipsum`, etc.) and override the score to force ⚠ Likely Test.
 
@@ -86,7 +94,7 @@ Test detection: regex patterns catch common placeholder strings (`test`, `asdf`,
 | Script | Description |
 |--------|-------------|
 | `npm run dev` | Start Next.js dashboard |
-| `npm run dev:labeler` | Start labeler backend |
+| `npm run labeler` | Start labeler backend |
 | `npm run dev:service` | Start dashboard + labeler concurrently |
 | `npm run start:service` | Start the production app service processes |
 | `npm run setup` | Initialize labeler account |

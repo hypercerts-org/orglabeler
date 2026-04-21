@@ -3,6 +3,12 @@
 import { ScoreBadge } from '@/components/ScoreBadge'
 import { COMPLETENESS_WEIGHTS } from '@/lib/constants'
 
+const CLIENT_BASE_URL = (process.env.NEXT_PUBLIC_CLIENT_URL ?? '').replace(/\/$/, '')
+
+const clientUrl = (path: string) => {
+  return CLIENT_BASE_URL ? `${CLIENT_BASE_URL}${path}` : path
+}
+
 const SCORING_CRITERIA = [
   {
     label: 'Display name',
@@ -76,19 +82,19 @@ const API_ENDPOINTS = [
     method: 'GET',
     path: '/api/stats',
     description: 'Dashboard statistics — total records, tier breakdown, 24h/7d record counts.',
-    curl: `curl https://einstein.climateai.org/api/stats`,
+    curl: `curl ${clientUrl('/api/stats')}`,
   },
   {
     method: 'GET',
     path: '/api/recent?limit=20&offset=0&tier=all',
     description: 'Recent organization records with pagination, tier filtering, AI-only filtering (hf=true), and text search (q=...). Valid tier values: all, likely-test, standard, high-quality.',
-    curl: `curl "https://einstein.climateai.org/api/recent?limit=20&offset=0&tier=high-quality"`,
+    curl: `curl "${clientUrl('/api/recent?limit=20&offset=0&tier=high-quality')}"`,
   },
   {
     method: 'GET',
     path: '/xrpc/com.atproto.label.queryLabels?uriPatterns=at://did:plc:*/app.certified.actor.organization/*',
     description: 'Query AT Protocol labels via the standard labeler endpoint. Use uriPatterns to filter record URIs and sources to scope the label source.',
-    curl: `curl "https://einstein.climateai.org/xrpc/com.atproto.label.queryLabels?uriPatterns=at://did:plc:*/app.certified.actor.organization/*"`,
+    curl: `curl "${clientUrl('/xrpc/com.atproto.label.queryLabels?uriPatterns=at://did:plc:*/app.certified.actor.organization/*')}"`,
   },
 ]
 
@@ -320,13 +326,13 @@ export default function DocsPage() {
             <div className='space-y-1'>
               <p className='text-xs font-medium font-[family-name:var(--font-syne)]'>Labeler DID</p>
               <p className='font-mono text-xs bg-secondary rounded px-2 py-1 break-all'>
-                did:plc:5rw6of6lry7ihmyhm323ycwn
+                did:plc:pswneepkd5lesumj7ejmkbal
               </p>
             </div>
             <div className='space-y-1'>
               <p className='text-xs font-medium font-[family-name:var(--font-syne)]'>Handle</p>
               <p className='font-mono text-xs bg-secondary rounded px-2 py-1'>
-                einstein.climateai.org
+                orglabeler.certified.one
               </p>
             </div>
           </div>

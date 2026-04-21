@@ -29,7 +29,7 @@ function main() {
     fs.unlinkSync("cursor.txt")
     console.log("  ✓ Deleted cursor.txt")
   }
-  console.log("\nDatabases reset. Run npm run dev:labeler to start fresh.")
+  console.log("\nDatabases reset. Run npm run labeler to start fresh.")
 }
 
 main()

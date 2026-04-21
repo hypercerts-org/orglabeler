@@ -221,7 +221,7 @@ async function main() {
   console.log(`Signing key:     ${signingKeyHex.slice(0, 8)}...`)
   console.log(`Labeler endpoint: ${labelerEndpoint}`)
   console.log("\nNext steps:")
-  console.log("  npm run dev:labeler   — start the labeler backend")
+  console.log("  npm run labeler      — start the labeler backend")
   console.log("  npm run dev           — start the dashboard")
 }
 

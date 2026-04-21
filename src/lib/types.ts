@@ -89,7 +89,7 @@ export type LegacyLabelTier = 'pending' | 'draft'
 export type LabelTier = RuntimeLabelTier | LegacyLabelTier
 
 export interface ScoreResult {
-  totalScore: number       // 0-100 normalized
+  totalScore: number       // normalized 0-100 completeness score
   tier: LabelTier
   breakdown: ScoreBreakdown
   testSignals: string[]    // reasons flagged as test data
@@ -127,6 +127,7 @@ export interface ActivityLogEntry {
   tier: LabelTier
   breakdown: string       // JSON-serialized ScoreBreakdown
   testSignals: string     // JSON-serialized string[]
+  // Stored as JSON in SQLite, then deserialized into the in-memory/API string[] shape.
   validationNotes: string[]
   labeledAt: string       // ISO timestamp
   hfLabel?: string | null // HuggingFace classification label (nullable)
