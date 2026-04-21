@@ -23,19 +23,19 @@ export const LABELS: LabelDefinition[] = [
 ]
 
 export const COMPLETENESS_WEIGHTS = {
-  displayName: 15,
-  description: 15,
+  displayName: 5,
+  description: 10,
   organizationType: 10,
   websitePresent: 10,
-  websiteResolves: 10,
+  websiteResolves: 15,
   websiteMatchesName: 5,
   organizationUrlsPresent: 5,
   organizationUrlsResolve: 5,
-  locationValid: 5,
+  locationValid: 15,
   foundedDateValid: 5,
-  foundedDateAge: 5,
-  avatar: 5,
-  banner: 5,
+  foundedDateAge: 10,
+  avatar: 10,
+  banner: 10,
 } as const
 
 // Final score bands are intentionally coarse and should stay readable here:

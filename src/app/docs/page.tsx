@@ -7,7 +7,7 @@ const SCORING_CRITERIA = [
   {
     label: 'Display name',
     points: COMPLETENESS_WEIGHTS.displayName,
-    description: 'Awards points when the display name comes from profile data or organization type instead of the DID-derived fallback.',
+    description: 'Awards a small amount when the display name comes from profile data or organization type instead of the DID-derived fallback.',
   },
   {
     label: 'Description',
@@ -27,12 +27,12 @@ const SCORING_CRITERIA = [
   {
     label: 'Profile website resolves',
     points: COMPLETENESS_WEIGHTS.websiteResolves,
-    description: 'Awards points when profile.website is a valid public HTTP(S) URL.',
+    description: 'Awards stronger points when profile.website is a valid public HTTP(S) URL.',
   },
   {
     label: 'Profile website matches name',
     points: COMPLETENESS_WEIGHTS.websiteMatchesName,
-    description: 'Awards points when the display name matches the profile.website domain stem.',
+    description: 'Awards a small amount when the display name matches the profile.website domain stem.',
   },
   {
     label: 'Organization URLs (small bonus)',
@@ -47,7 +47,7 @@ const SCORING_CRITERIA = [
   {
     label: 'Location valid',
     points: COMPLETENESS_WEIGHTS.locationValid,
-    description: 'Awards points when the location is a valid certified location reference.',
+    description: 'Awards stronger points when the location is a valid certified location reference.',
   },
   {
     label: 'Founded date valid',
@@ -62,12 +62,12 @@ const SCORING_CRITERIA = [
   {
     label: 'Avatar',
     points: COMPLETENESS_WEIGHTS.avatar,
-    description: 'Awards points when the profile has an avatar.',
+    description: 'Awards meaningful points when the profile has an avatar.',
   },
   {
     label: 'Banner',
     points: COMPLETENESS_WEIGHTS.banner,
-    description: 'Awards points when the profile has a banner.',
+    description: 'Awards meaningful points when the profile has a banner.',
   },
 ]
 
@@ -177,8 +177,9 @@ export default function DocsPage() {
         </h2>
         <p className='text-sm text-muted-foreground'>
           Each passing organization record is evaluated on 13 completeness criteria for a maximum of 100 points. The
-          authenticity gate runs first, validation notes are informational only, and labels stay attached to the
-          organization record URI.
+          rubric now gives less credit to basic identity fields and more weight to harder-to-fake credibility signals
+          like website resolution, location, and visual/profile completeness. The authenticity gate runs first,
+          validation notes are informational only, and labels stay attached to the organization record URI.
         </p>
         <div className='border border-border rounded-lg bg-card overflow-hidden'>
           <table className='w-full text-sm'>
