@@ -34,7 +34,7 @@ async function proxyToLabeler(request: NextRequest, { params }: { params: Promis
 
   // Preserve query params
   request.nextUrl.searchParams.forEach((value, key) => {
-    url.searchParams.set(key, value)
+    url.searchParams.append(key, value)
   })
 
   try {

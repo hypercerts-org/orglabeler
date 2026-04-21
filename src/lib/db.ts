@@ -281,7 +281,9 @@ function listSnapshots<T>(
     LIMIT ? OFFSET ?
   `).all(safeLimit, safeOffset) as SnapshotRow[]
 
-  return rows.map(row => snapshotRowToEntry<T>(row))
+  return rows
+    .map(row => snapshotRowToEntry<T>(row))
+    .filter((snapshot): snapshot is SnapshotRecord<T> => snapshot !== null)
 }
 
 function deleteSnapshot(table: 'profile_snapshots' | 'organization_snapshots', did: string): void {
@@ -334,7 +336,9 @@ export function getAllOrganizationSnapshots(): OrganizationSnapshot[] {
     ORDER BY updated_at DESC
   `).all() as SnapshotRow[]
 
-  return rows.map(row => snapshotRowToEntry<OrganizationSnapshot['payload']>(row))
+  return rows
+    .map(row => snapshotRowToEntry<OrganizationSnapshot['payload']>(row))
+    .filter((snapshot): snapshot is SnapshotRecord<OrganizationSnapshot['payload']> => snapshot !== null)
 }
 
 export function deleteOrganizationSnapshot(did: string): void {
@@ -655,12 +659,14 @@ function rowToEntry(row: Record<string, unknown>): ActivityLogEntry {
   }
 }
 
-function snapshotRowToEntry<T>(row: SnapshotRow): SnapshotRecord<T> {
+function snapshotRowToEntry<T>(row: SnapshotRow): SnapshotRecord<T> | null {
   const validationNotes: string[] = []
   const payload = parseSnapshotPayload<T>(row.payload, validationNotes)
   const rowNotes = parseValidationNotes(row.validation_notes)
 
   if (rowNotes) validationNotes.push(...rowNotes)
+
+  if (payload === null) return null
 
   return {
     did: row.did,
@@ -672,12 +678,12 @@ function snapshotRowToEntry<T>(row: SnapshotRow): SnapshotRecord<T> {
   } as SnapshotRecord<T>
 }
 
-function parseSnapshotPayload<T>(value: string, validationNotes: string[]): T {
+function parseSnapshotPayload<T>(value: string, validationNotes: string[]): T | null {
   try {
     return JSON.parse(value) as T
   } catch {
     validationNotes.push('Snapshot payload JSON failed to parse')
-    return {} as T
+    return null
   }
 }
 
