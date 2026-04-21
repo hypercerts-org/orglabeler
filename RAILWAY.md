@@ -35,7 +35,7 @@ Required:
 |----------|-------------|
 | `DID` | Labeler DID |
 | `SIGNING_KEY` | Labeler private key |
-| `LABELER_ENDPOINT` | Public HTTPS URL of the app service |
+| `NEXT_PUBLIC_LABELER_ENDPOINT` | Public HTTPS URL of the app service |
 | `TAP_URL` | Required URL of the separate Tap service; no localhost default |
 
 Usually needed for setup/sync:
@@ -126,7 +126,7 @@ The app service must be able to reach `TAP_URL`; the Tap service does not need t
 
 ### App service health check fails
 
-- Check `DID`, `SIGNING_KEY`, and `LABELER_ENDPOINT`
+- Check `DID`, `SIGNING_KEY`, and `NEXT_PUBLIC_LABELER_ENDPOINT`
 - Check the app logs for the labeler process error
 
 ### Emergency reset

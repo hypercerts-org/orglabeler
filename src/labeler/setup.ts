@@ -23,7 +23,7 @@ if (!handle || !password) {
 
 const labelerEndpoint =
   process.argv[4] ||
-  process.env.LABELER_ENDPOINT ||
+  process.env.NEXT_PUBLIC_LABELER_ENDPOINT ||
   `https://labeler.${handle}`
 
 // Find --token flag or use 5th positional arg or PLC_TOKEN env var
@@ -207,7 +207,7 @@ async function main() {
     BSKY_IDENTIFIER: handle,
     BSKY_PASSWORD: password,
     SIGNING_KEY: signingKeyHex,
-    LABELER_ENDPOINT: labelerEndpoint,
+    NEXT_PUBLIC_LABELER_ENDPOINT: labelerEndpoint,
     PDS_URL: pdsUrl,
   }
   if (did) updates.DID = did

@@ -111,7 +111,7 @@ Test detection: regex patterns catch common placeholder strings (`test`, `asdf`,
 | `BSKY_IDENTIFIER` | (set by setup) | Account handle |
 | `BSKY_PASSWORD` | (set by setup) | Account password or app password |
 | `PDS_URL` | (auto-detected) | PDS endpoint URL |
-| `LABELER_ENDPOINT` | https://labeler.<handle> | Public HTTPS URL for the labeler |
+| `NEXT_PUBLIC_LABELER_ENDPOINT` | https://labeler.<handle> | Public HTTPS URL for the labeler |
 | `HOST` | 127.0.0.1 | Labeler server bind address |
 | `LABELER_PORT` | 4100 | Labeler server port |
 | `METRICS_PORT` | 4101 | Prometheus metrics port |

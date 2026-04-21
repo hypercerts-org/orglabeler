@@ -44,7 +44,7 @@ These are validated at startup by `src/lib/config.ts`.
 
 - `BSKY_IDENTIFIER`
 - `BSKY_PASSWORD`
-- `LABELER_ENDPOINT`
+- `NEXT_PUBLIC_LABELER_ENDPOINT`
 
 Use these with `npm run setup` and `npm run set-labels` when registering the labeler account and label definitions.
 
@@ -91,7 +91,7 @@ Also persist the `-wal` and `-shm` companions that SQLite may create beside each
 1. Build the app service with the repository Dockerfile or an equivalent container build.
 2. Deploy Tap as its own service and mount a separate persistent volume for its database files.
 3. Mount a persistent volume for the app service's SQLite files.
-4. Set `DID`, `SIGNING_KEY`, and `LABELER_ENDPOINT` before first startup.
+4. Set `DID`, `SIGNING_KEY`, and `NEXT_PUBLIC_LABELER_ENDPOINT` before first startup.
 5. Set `TAP_URL` to the Tap service URL.
 6. Set `ACTIVITY_DB_PATH` and `LABELS_DB_PATH` to paths on the app volume.
 7. Start the app service with `npm run start:service`.
@@ -100,6 +100,6 @@ Also persist the `-wal` and `-shm` companions that SQLite may create beside each
 ## Hosted environment notes
 
 - Run a single replica only for each service; SQLite state is not safe to share across multiple hosts.
-- Expose the dashboard on the host-assigned HTTP port and make the labeler endpoint publicly reachable at `LABELER_ENDPOINT`.
+- Expose the dashboard on the host-assigned HTTP port and make the labeler endpoint publicly reachable at `NEXT_PUBLIC_LABELER_ENDPOINT`.
 - Keep Tap reachable from the app service at `TAP_URL`; do not rely on a localhost default.
 - If you need to reset state on a hosted platform, set `RESET_DB=true` for one restart, then remove it.
