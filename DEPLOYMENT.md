@@ -29,7 +29,10 @@ At runtime, the labeler process starts:
 
 Tap is a separate service. The labeler process connects to it via `TAP_URL` instead of launching it locally, and startup should fail if `TAP_URL` is missing.
 
-The dashboard proxies `/xrpc/*` requests to the local labeler server at `http://127.0.0.1:LABELER_PORT`.
+The dashboard proxies only the public label distribution XRPC methods under `/xrpc/*` to the local labeler server at `http://127.0.0.1:LABELER_PORT`:
+
+- `com.atproto.label.queryLabels`
+- `com.atproto.label.subscribeLabels`
 
 ## Environment variables
 

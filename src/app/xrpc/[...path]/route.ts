@@ -4,10 +4,32 @@ export const dynamic = 'force-dynamic'
 
 const LABELER_PORT = process.env.LABELER_PORT ? Number(process.env.LABELER_PORT) : 4100
 const LABELER_ORIGIN = `http://127.0.0.1:${LABELER_PORT}`
+const PUBLIC_XRPC_METHODS = new Set([
+  'com.atproto.label.queryLabels',
+  'com.atproto.label.subscribeLabels',
+])
+
+function buildRejectedResponse(method: string) {
+  return NextResponse.json(
+    { error: 'XrpcMethodNotPublic', message: `/xrpc/${method} is not publicly proxied` },
+    {
+      status: 404,
+      headers: {
+        'access-control-allow-origin': '*',
+        'cache-control': 'no-store',
+      },
+    }
+  )
+}
 
 async function proxyToLabeler(request: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   const { path } = await params
   const xrpcPath = path.join('/')
+
+  if (!PUBLIC_XRPC_METHODS.has(xrpcPath)) {
+    return buildRejectedResponse(xrpcPath)
+  }
+
   const url = new URL(`/xrpc/${xrpcPath}`, LABELER_ORIGIN)
 
   // Preserve query params
