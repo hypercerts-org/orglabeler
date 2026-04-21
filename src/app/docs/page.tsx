@@ -1,12 +1,11 @@
-'use client'
-
 import { ScoreBadge } from '@/components/ScoreBadge'
 import { COMPLETENESS_WEIGHTS } from '@/lib/constants'
 
-const LABELER_BASE_URL = (process.env.NEXT_PUBLIC_LABELER_ENDPOINT ?? '').replace(/\/$/, '')
+const getLabelerBaseUrl = () => (process.env.NEXT_PUBLIC_LABELER_ENDPOINT ?? '').replace(/\/$/, '')
 
 const labelerUrl = (path: string) => {
-  return LABELER_BASE_URL ? `${LABELER_BASE_URL}${path}` : path
+  const baseUrl = getLabelerBaseUrl()
+  return baseUrl ? `${baseUrl}${path}` : path
 }
 
 const SCORING_CRITERIA = [

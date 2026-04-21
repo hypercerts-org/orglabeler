@@ -1,5 +1,3 @@
-'use client'
-
 import type { LabelTier, RuntimeLabelTier } from '@/lib/types'
 
 interface ScoreBadgeProps {

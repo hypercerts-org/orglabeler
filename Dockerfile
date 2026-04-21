@@ -15,7 +15,9 @@ COPY . .
 
 # Build Next.js — bake deploy timestamp and git SHA into the image
 ARG RAILWAY_GIT_COMMIT_SHA
+ARG NEXT_PUBLIC_LABELER_ENDPOINT
 ENV NEXT_PUBLIC_COMMIT_SHA=$RAILWAY_GIT_COMMIT_SHA
+ENV NEXT_PUBLIC_LABELER_ENDPOINT=$NEXT_PUBLIC_LABELER_ENDPOINT
 RUN chmod +x scripts/build.sh && ./scripts/build.sh
 
 # Expose ports for the app service only; Tap runs separately via TAP_URL
