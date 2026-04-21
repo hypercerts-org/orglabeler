@@ -81,13 +81,13 @@ const API_ENDPOINTS = [
     method: 'GET',
     path: '/api/stats',
     description: 'Dashboard statistics — total records, tier breakdown, 24h/7d record counts.',
-    curl: 'curl /api/stats',
+    curl: `curl "${labelerUrl('/api/stats')}"`,
   },
   {
     method: 'GET',
     path: '/api/recent?limit=20&offset=0&tier=all',
     description: 'Recent organization records with pagination, tier filtering, AI-only filtering (hf=true), and text search (q=...). Valid tier values: all, likely-test, standard, high-quality.',
-    curl: 'curl "/api/recent?limit=20&offset=0&tier=high-quality"',
+    curl: `curl "${labelerUrl('/api/recent?limit=20&offset=0&tier=high-quality')}"`,
   },
   {
     method: 'GET',
