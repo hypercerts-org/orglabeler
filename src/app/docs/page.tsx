@@ -261,17 +261,17 @@ export default function DocsPage() {
           {[
             {
               tier: 'high-quality' as const,
-              range: '75 – 100',
+              range: '70 – 100',
               detail: 'Strong merged profile + organization record with broad completeness across the rubric.',
             },
             {
               tier: 'standard' as const,
-              range: '45 – 74',
+              range: '40 – 69',
               detail: 'Decent merged record with some useful metadata, but not full rubric coverage.',
             },
             {
               tier: 'likely-test' as const,
-              range: '0 – 44 or gate failures',
+              range: '0 – 39 or gate failures',
               detail: 'Contains authenticity gate failures, or falls below the standard threshold.',
             },
           ].map(({ tier, range, detail }) => (

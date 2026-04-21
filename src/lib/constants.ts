@@ -41,9 +41,9 @@ export const COMPLETENESS_WEIGHTS = {
 
 // Final score bands are intentionally coarse and should stay readable here.
 export const SCORE_THRESHOLDS: Record<RuntimeQualityTier, { min: number; max: number }> = {
-  'likely-test': { min: 0, max: 44 },
-  standard: { min: 45, max: 74 },
-  'high-quality': { min: 75, max: 100 },
+  'likely-test': { min: 0, max: 39 },
+  standard: { min: 40, max: 69 },
+  'high-quality': { min: 70, max: 100 },
 }
 
 // Founded-date age scoring is binary: the 5-point bonus applies once the
