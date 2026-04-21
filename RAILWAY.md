@@ -82,7 +82,9 @@ Deploy Tap as its own Railway service or equivalent container.
 
 ### Tap storage
 
-Mount a separate persistent volume for the Tap service database files and their SQLite companion files (`-wal` / `-shm`).
+Tap manages its SQLite files at its default location. Mount a separate persistent volume for the Tap service so the default `tap.db` file and its SQLite companion files (`-wal` / `-shm`) survive restarts.
+
+Do not point Tap at a custom database path unless the service itself exposes that option.
 
 ---
 
