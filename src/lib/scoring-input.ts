@@ -31,6 +31,8 @@ export interface MergedScoringInputSource {
   profileValidationNotes?: string[]
 }
 
+const ORGANIZATION_URLS_FOR_SCORING_LIMIT = 4
+
 function normalizeText(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
 }
@@ -66,6 +68,7 @@ export function buildMergedScoringInput(source: MergedScoringInputSource): Merge
       label: normalizeText(item?.label) || null,
     }))
     .filter(item => item.url.length > 0)
+    .slice(0, ORGANIZATION_URLS_FOR_SCORING_LIMIT)
 
   const { displayName, displayNameSource } = buildDisplayName(
     source.did,
