@@ -2,13 +2,14 @@
 // Run with: npx tsx src/labeler/setup.ts <handle> <password> [labeler-endpoint] [--token PLC_TOKEN]
 // Or: npm run setup -- satyam2.climateai.org mypassword https://labeler.example.com
 
-import { plcRequestToken, plcSetupLabeler, declareLabeler } from "@skyware/labeler/scripts"
+import { plcRequestToken, plcSetupLabeler } from '@skyware/labeler/scripts'
 import 'dotenv/config'
-import { LABELS } from "../lib/constants"
-import { resolvePds } from "../lib/resolve-pds"
-import * as readline from "node:readline"
-import * as fs from "node:fs"
-import { secp256k1 } from "@noble/curves/secp256k1"
+import { secp256k1 } from '@noble/curves/secp256k1'
+import * as fs from 'node:fs'
+import * as readline from 'node:readline'
+import { LABELS } from '../lib/constants'
+import { declareLabeler } from './declare-labeler'
+import { resolvePds } from '../lib/resolve-pds'
 
 // --- Arg / env parsing ---
 

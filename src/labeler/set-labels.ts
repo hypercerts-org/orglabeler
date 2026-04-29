@@ -2,8 +2,8 @@
 
 import { BSKY_IDENTIFIER, BSKY_PASSWORD } from '../lib/config'
 import { LABELS } from '../lib/constants'
-import { setLabelerLabelDefinitions } from '@skyware/labeler/scripts'
 import { resolvePds } from '../lib/resolve-pds'
+import { setLabelerLabelDefinitions } from './declare-labeler'
 
 async function main() {
   const identifier = process.argv[2] || BSKY_IDENTIFIER
