@@ -25,8 +25,14 @@ const DEFAULT_DECLARE_OPTIONS: Required<Pick<DeclareLabelerOptions, 'subjectType
   subjectCollections: [PROFILE_COLLECTION, ORGANIZATION_COLLECTION],
 }
 
-let xrpc: Client | undefined
-let credentialManager: CredentialManager | undefined
+const DEFAULT_PDS = 'https://bsky.social'
+
+type CachedLoginAgent = {
+  credentialManager: CredentialManager
+  xrpc: Client
+}
+
+const loginAgentCache = new Map<string, CachedLoginAgent>()
 
 type XrpcAgent = {
   get: (name: string, options?: unknown) => Promise<{ data?: { value?: unknown } }>
@@ -43,8 +49,8 @@ type XrpcPostResponse = {
 }
 
 async function loginAgent({ pds, ...credentials }: LoginCredentials) {
-  credentialManager ??= new CredentialManager({ service: pds || 'https://bsky.social' })
-  xrpc ??= new Client({ handler: credentialManager })
+  const normalizedPds = normalizeLoginPds(pds)
+  const { credentialManager, xrpc } = getCachedLoginAgent(normalizedPds)
 
   if (credentialManager.session && credentialsMatchSession({ pds, ...credentials }, credentialManager.session)) {
     return { agent: xrpc as unknown as XrpcAgent, session: credentialManager.session }
@@ -54,11 +60,35 @@ async function loginAgent({ pds, ...credentials }: LoginCredentials) {
   return { agent: xrpc as unknown as XrpcAgent, session }
 }
 
+function getCachedLoginAgent(normalizedPds: string) {
+  const cachedLoginAgent = loginAgentCache.get(normalizedPds)
+  if (cachedLoginAgent) return cachedLoginAgent
+
+  const credentialManager = new CredentialManager({ service: normalizedPds })
+  const xrpc = new Client({ handler: credentialManager })
+  const loginAgent = { credentialManager, xrpc }
+
+  loginAgentCache.set(normalizedPds, loginAgent)
+  return loginAgent
+}
+
+function normalizePds(pds: string) {
+  return pds.replace(/\/+$/, '')
+}
+
+function normalizeLoginPds(pds?: string) {
+  return normalizePds(pds || DEFAULT_PDS)
+}
+
 function credentialsMatchSession(
   credentials: LoginCredentials,
   session: { did: string; handle: string; email?: string | null; pdsUri?: string },
 ) {
-  return (!!credentials.pds ? credentials.pds === session.pdsUri : true)
+  const pdsMatches = credentials.pds === undefined
+    ? true
+    : !!session.pdsUri && normalizeLoginPds(credentials.pds) === normalizePds(session.pdsUri)
+
+  return pdsMatches
     && [session.did, session.handle, session.email].includes(credentials.identifier)
 }
 
