@@ -43,12 +43,15 @@ The setup script will:
 ### Run
 
 ```bash
-# Start the app service (dashboard + labeler)
+# Start the app service locally (dashboard + labeler, without Caddy)
 npm run dev:service
 
 # Or start separately:
 npm run dev            # Dashboard on http://localhost:3000
 npm run labeler        # Labeler backend on port 4100 + metrics on 4101
+
+# Production start runs Caddy + Next + labeler
+npm run start:service   # Caddy on $PORT, Next on NEXT_PORT, labeler on LABELER_PORT
 ```
 
 Tap runs as a separate service. Point `TAP_URL` at that service's URL; there is no localhost fallback and the app will not start without it.
@@ -96,7 +99,7 @@ Test detection: regex patterns catch common placeholder strings (`test`, `asdf`,
 | `npm run dev` | Start Next.js dashboard |
 | `npm run labeler` | Start labeler backend |
 | `npm run dev:service` | Start dashboard + labeler concurrently |
-| `npm run start:service` | Start the production app service processes |
+| `npm run start:service` | Start Caddy reverse proxy + production dashboard + labeler process |
 | `npm run setup` | Initialize labeler account |
 | `npm run set-labels` | Push/update label definitions |
 | `npm run build` | Production build |
@@ -112,8 +115,10 @@ Test detection: regex patterns catch common placeholder strings (`test`, `asdf`,
 | `BSKY_PASSWORD` | (set by setup) | Account password or app password |
 | `PDS_URL` | (auto-detected) | PDS endpoint URL |
 | `NEXT_PUBLIC_LABELER_ENDPOINT` | https://labeler.<handle> | Public HTTPS URL for the labeler |
-| `HOST` | 127.0.0.1 | Labeler server bind address |
-| `LABELER_PORT` | 4100 | Labeler server port |
+| `PORT` | 8080 | Public HTTP port listened to by Caddy; hosted platforms usually set this |
+| `NEXT_PORT` | 3000 | Internal Next.js port behind Caddy |
+| `HOST` | 127.0.0.1 | Labeler server bind address; keep local when Caddy is in the same container |
+| `LABELER_PORT` | 4100 | Internal labeler server port behind Caddy |
 | `METRICS_PORT` | 4101 | Prometheus metrics port |
 | `TAP_URL` | required | URL of the separate Tap service (no localhost default) |
 | `ACTIVITY_DB_PATH` | `activity-log.db` | Activity log database path |
@@ -124,19 +129,15 @@ Tap-specific settings belong on the Tap service, not the app service. This repo 
 
 Deploy the app service and Tap as separate services. The app service runs the dashboard plus labeler backend and connects to Tap over `TAP_URL`; Tap owns its own database, volume, lifecycle, and any Tap-specific auth settings.
 
-The labeler backend (port 4100) must be accessible via HTTPS for AT Protocol clients. Use a reverse proxy:
+The production app uses Caddy as the front door. Caddy routes public AT Protocol XRPC label methods directly to the labeler process and everything else to Next.js:
 
-```nginx
-server {
-    listen 443 ssl;
-    server_name labeler.yourdomain.com;
-    
-    location / {
-        proxy_pass http://127.0.0.1:4100;
-        proxy_set_header Host $host;
-    }
-}
+```txt
+/xrpc/com.atproto.label.queryLabels     -> 127.0.0.1:4100
+/xrpc/com.atproto.label.subscribeLabels -> 127.0.0.1:4100
+/*                                      -> 127.0.0.1:3000
 ```
+
+This is important because `subscribeLabels` uses WebSockets, which need a real reverse proxy rather than the Next.js `fetch()` proxy fallback.
 
 ## Tech Stack
 

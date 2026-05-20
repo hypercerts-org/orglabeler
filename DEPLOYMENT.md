@@ -15,7 +15,9 @@ Current scripts:
 - `npm run start` → `next start`
 - `npm run dev:service` → runs `npm run dev` and `npm run labeler` together
 - `npm run labeler` → `tsx src/labeler/start.ts`
-- `npm run start:service` → runs `npm run start` and `npm run labeler` together
+- `npm run start:service` → runs Caddy, `npm run start:next`, and `npm run labeler` together
+- `npm run start:next` → starts Next.js on `NEXT_PORT` (default `3000`)
+- `npm run start:proxy` → starts Caddy using `Caddyfile`
 
 For hosted deployment, the image build uses `scripts/build.sh`, which sets `NEXT_PUBLIC_DEPLOY_TIME` and then runs `npm run build`.
 
@@ -29,10 +31,12 @@ At runtime, the labeler process starts:
 
 Tap is a separate service. The labeler process connects to it via `TAP_URL` instead of launching it locally, and startup should fail if `TAP_URL` is missing.
 
-The dashboard proxies only the public label distribution XRPC methods under `/xrpc/*` to the local labeler server at `http://127.0.0.1:LABELER_PORT`:
+Caddy is the public front door for the app service. It routes dashboard and API traffic to Next.js, and routes public label distribution XRPC methods directly to the local labeler server at `http://127.0.0.1:LABELER_PORT`:
 
 - `com.atproto.label.queryLabels`
 - `com.atproto.label.subscribeLabels`
+
+The direct Caddy route is required for `subscribeLabels`, because it is a WebSocket endpoint.
 
 ## Environment variables
 
@@ -72,8 +76,10 @@ If your Tap deployment uses admin auth, configure `TAP_ADMIN_PASSWORD` on the Ta
 
 - `HF_TOKEN` — enables HuggingFace classification; if unset, HF scoring stays disabled
 - `PDS_URL` — overrides PDS discovery from the DID document
-- `HOST` — bind host for the labeler server (`0.0.0.0` by default)
-- `LABELER_PORT` — labeler HTTP port (`4100` by default)
+- `PORT` — public Caddy HTTP port (hosted platforms usually set this; default fallback `8080`)
+- `NEXT_PORT` — internal Next.js HTTP port (`3000` by default)
+- `HOST` — bind host for the labeler server (`127.0.0.1` is recommended when Caddy runs in the same container)
+- `LABELER_PORT` — internal labeler HTTP port (`4100` by default)
 - `METRICS_PORT` — metrics port (`4101` by default)
 - `RESET_DB=true` — deletes the SQLite files before startup
 
@@ -103,6 +109,6 @@ Also persist the `-wal` and `-shm` companions that SQLite may create beside each
 ## Hosted environment notes
 
 - Run a single replica only for each service; SQLite state is not safe to share across multiple hosts.
-- Expose the dashboard on the host-assigned HTTP port and make the labeler endpoint publicly reachable at `NEXT_PUBLIC_LABELER_ENDPOINT`.
+- Expose Caddy on the host-assigned HTTP port and set `NEXT_PUBLIC_LABELER_ENDPOINT` to that public URL. Caddy will route `/xrpc/*` label methods to the labeler and dashboard/API routes to Next.js.
 - Keep Tap reachable from the app service at `TAP_URL`; do not rely on a localhost default.
 - If you need to reset state on a hosted platform, set `RESET_DB=true` for one restart, then remove it.

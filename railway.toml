@@ -9,6 +9,7 @@ watchPatterns = [
   "package.json",
   "package-lock.json",
   "Dockerfile",
+  "Caddyfile",
   "railway.toml",
   "tsconfig.json",
 ]
