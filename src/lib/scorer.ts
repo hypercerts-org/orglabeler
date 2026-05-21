@@ -1,7 +1,6 @@
 import type { LabelTier, ScoreBreakdown, ScoreResult } from './types'
 import type { MergedScoringInput } from './scoring-input'
 import { AUTHENTICITY_FAILURE_TIER, COMPLETENESS_WEIGHTS, FOUNDED_DATE_AGE_BUCKETS, SCORE_THRESHOLDS } from './constants'
-import { resolvePublicUrl } from './link-resolver'
 import { evaluateMergedActorAuthenticity } from './scoring-authenticity'
 import { validateOrganizationLocationRef } from './location-utils'
 import { displayNameMatchesWebsiteDomain, normalizePublicWebsiteUrl } from './website-utils'
@@ -25,6 +24,11 @@ const ZERO_BREAKDOWN: ScoreBreakdown = {
   avatar: 0,
   banner: 0,
 }
+
+// Organization records do not currently cap the number of URL refs in the
+// generated lexicon. Keep URL scoring bounded and avoid network calls on the Tap
+// ack path.
+const MAX_ORGANIZATION_URLS_TO_CHECK = 3
 
 function normalizeText(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
@@ -54,12 +58,9 @@ function scoreWebsitePresent(website: string | null): number {
   return website ? COMPLETENESS_WEIGHTS.websitePresent : 0
 }
 
-async function scoreWebsiteResolves(website: string | null): Promise<number> {
+function scoreWebsiteResolves(website: string | null): number {
   const normalized = normalizePublicWebsiteUrl(website)
-  if (!normalized) return 0
-
-  const result = await resolvePublicUrl(normalized)
-  return result.resolvable ? COMPLETENESS_WEIGHTS.websiteResolves : 0
+  return normalized ? COMPLETENESS_WEIGHTS.websiteResolves : 0
 }
 
 function scoreWebsiteMatchesName(displayName: string, website: string | null): number {
@@ -71,16 +72,13 @@ function scoreOrganizationUrlsPresent(urls: MergedScoringInput['urls']): number 
   return (urls ?? []).length > 0 ? COMPLETENESS_WEIGHTS.organizationUrlsPresent : 0
 }
 
-async function scoreOrganizationUrlsResolve(urls: MergedScoringInput['urls']): Promise<number> {
-  for (const item of Array.isArray(urls) ? urls : []) {
-    const normalized = normalizePublicWebsiteUrl(item.url)
-    if (!normalized) continue
+function scoreOrganizationUrlsResolve(urls: MergedScoringInput['urls']): number {
+  const normalizedUrls = (Array.isArray(urls) ? urls : [])
+    .map(item => normalizePublicWebsiteUrl(item?.url))
+    .filter((url): url is string => Boolean(url))
+    .slice(0, MAX_ORGANIZATION_URLS_TO_CHECK)
 
-    const result = await resolvePublicUrl(normalized)
-    if (result.resolvable) return COMPLETENESS_WEIGHTS.organizationUrlsResolve
-  }
-
-  return 0
+  return normalizedUrls.length > 0 ? COMPLETENESS_WEIGHTS.organizationUrlsResolve : 0
 }
 
 function scoreLocation(location: MergedScoringInput['location']): number {
@@ -134,10 +132,8 @@ export async function scoreActivity(record: MergedScoringInput): Promise<ScoreRe
     }
   }
 
-  const [websiteResolves, organizationUrlsResolve] = await Promise.all([
-    scoreWebsiteResolves(record.profileWebsite),
-    scoreOrganizationUrlsResolve(record.urls),
-  ])
+  const websiteResolves = scoreWebsiteResolves(record.profileWebsite)
+  const organizationUrlsResolve = scoreOrganizationUrlsResolve(record.urls)
   const now = Date.now()
 
   const displayName = scoreDisplayName(record.displayNameSource, record.displayName)
