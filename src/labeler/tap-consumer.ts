@@ -6,6 +6,11 @@ import {
   logActivity,
   getUnclassifiedActivities,
   getAllActivitiesForSync,
+  claimDueRecomputeJob,
+  completeRecomputeJob,
+  enqueueRecomputeJob,
+  failRecomputeJob,
+  getRecomputeJobCounts,
   getProfileSnapshot,
   getOrganizationSnapshot,
   getAllOrganizationSnapshots,
@@ -25,6 +30,7 @@ import { getMergedActorDisplay } from '../lib/actor-display'
 import { buildMergedScoringInput } from '../lib/scoring-input'
 import { salvageProfileFallback } from '../lib/profile-fallback'
 import logger from './logger'
+import { observeTapHandlerDuration } from './metrics'
 import type { ActivityRecord, ProfileFallbackProfile, ProfileSnapshot, RuntimeLabelTier } from '../lib/types'
 import { $safeParse as $safeParseProfile } from '../lexicons/app/certified/actor/profile.defs'
 import { $safeParse } from '../lexicons/app/certified/actor/organization.defs'
@@ -35,6 +41,10 @@ const tap = new Tap(TAP_URL, tapConfig)
 const PROFILE_COLLECTION = 'app.certified.actor.profile'
 const ORGANIZATION_COLLECTION = ACTIVITY_COLLECTION
 const TARGET_COLLECTIONS = [PROFILE_COLLECTION, ORGANIZATION_COLLECTION]
+const RECOMPUTE_DEBOUNCE_MS = 2000
+const RECOMPUTE_WORKER_INTERVAL_MS = 500
+const RECOMPUTE_MAX_RETRY_DELAY_MS = 60_000
+const RECOMPUTE_MAX_ATTEMPTS = 10
 
 const indexer = new SimpleIndexer()
 
@@ -90,13 +100,25 @@ function logRecordOutcome(details: {
   did: string
   collection: string
   action: string
-  source: 'live' | 'startup'
+  source: 'live' | 'startup' | 'worker'
   labelAction: string
   score?: number
   tier?: RuntimeLabelTier
   profileIngestMode?: 'strict' | 'fallback' | 'missing'
 }): void {
   logger.info(details, 'Processed Tap record')
+}
+
+function enqueueOrganizationRecompute(did: string, reason: string): void {
+  enqueueRecomputeJob('recompute-org', did, {
+    delayMs: RECOMPUTE_DEBOUNCE_MS,
+    payload: { reason },
+  })
+}
+
+function retryDelayForAttempt(attempts: number): number {
+  const exponent = Math.max(0, attempts - 1)
+  return Math.min(RECOMPUTE_MAX_RETRY_DELAY_MS, RECOMPUTE_DEBOUNCE_MS * (2 ** exponent))
 }
 
 function buildHfText(
@@ -220,7 +242,45 @@ export async function recomputeLabeledOrganizationRow(did: string): Promise<Orga
   }
 }
 
+async function processPendingOrganizationDeletes(source: 'startup' | 'worker'): Promise<number> {
+  const pendingDeletes = getPendingOrganizationDeletes()
+  let processed = 0
+
+  for (const pendingDelete of pendingDeletes) {
+    try {
+      logger.info(
+        { did: pendingDelete.did, rkey: pendingDelete.rkey, uri: pendingDelete.record_uri, source },
+        'Retrying pending organization label negation before cleanup',
+      )
+      const negatedCount = await negateQualityLabels(pendingDelete.record_uri)
+      deleteOrganizationRecordState(pendingDelete.did, pendingDelete.rkey)
+      deletePendingOrganizationDelete(pendingDelete.did)
+      processed++
+
+      logRecordOutcome({
+        did: pendingDelete.did,
+        collection: ORGANIZATION_COLLECTION,
+        action: 'delete',
+        source,
+        labelAction: negatedCount > 0 ? 'negated' : 'unchanged',
+        profileIngestMode: getProfileIngestMode(getProfileSnapshot(pendingDelete.did)),
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      recordPendingOrganizationDeleteAttempt(pendingDelete.did, message)
+      logger.error(
+        { err, did: pendingDelete.did, rkey: pendingDelete.rkey, uri: pendingDelete.record_uri, source },
+        'Pending organization delete negation failed; will retry later',
+      )
+    }
+  }
+
+  return processed
+}
+
 export async function reconcileStoredOrganizationSnapshots(): Promise<number> {
+  await processPendingOrganizationDeletes('startup')
+
   const snapshots = getAllOrganizationSnapshots()
 
   for (const snapshot of snapshots) {
@@ -239,26 +299,6 @@ export async function reconcileStoredOrganizationSnapshots(): Promise<number> {
     }
   }
 
-  const pendingDeletes = getPendingOrganizationDeletes()
-  for (const pendingDelete of pendingDeletes) {
-    try {
-      logger.info(
-        { did: pendingDelete.did, rkey: pendingDelete.rkey, uri: pendingDelete.record_uri },
-        'Retrying pending organization label negation before cleanup',
-      )
-      await negateQualityLabels(pendingDelete.record_uri)
-      deleteOrganizationRecordState(pendingDelete.did, pendingDelete.rkey)
-      deletePendingOrganizationDelete(pendingDelete.did)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      recordPendingOrganizationDeleteAttempt(pendingDelete.did, message)
-      logger.error(
-        { err, did: pendingDelete.did, rkey: pendingDelete.rkey, uri: pendingDelete.record_uri },
-        'Pending organization delete negation failed; will retry later',
-      )
-    }
-  }
-
   if (snapshots.length > 0) {
     logger.info({ count: snapshots.length }, 'Reconciled local organization snapshots on startup')
   } else {
@@ -273,65 +313,44 @@ async function handleOrganizationDelete(did: string, rkey: string): Promise<void
   const recordUri = organization?.recordUri ?? `at://${did}/${ORGANIZATION_COLLECTION}/${rkey}`
 
   upsertPendingOrganizationDelete(did, rkey, recordUri)
+  enqueueOrganizationRecompute(did, 'organization-delete')
 
-  try {
-    const negatedCount = await negateQualityLabels(recordUri)
-    deleteOrganizationRecordState(did, rkey)
-    deletePendingOrganizationDelete(did)
-
-    logRecordOutcome({
-      did,
-      collection: ORGANIZATION_COLLECTION,
-      action: 'delete',
-      source: 'live',
-      labelAction: negatedCount > 0 ? 'negated' : 'unchanged',
-      profileIngestMode: getProfileIngestMode(getProfileSnapshot(did)),
-    })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    recordPendingOrganizationDeleteAttempt(did, message)
-    logger.error({ err, did, rkey, uri: recordUri }, 'Error negating organization labels after delete')
-  }
+  logRecordOutcome({
+    did,
+    collection: ORGANIZATION_COLLECTION,
+    action: 'delete',
+    source: 'live',
+    labelAction: 'delete-queued',
+    profileIngestMode: getProfileIngestMode(getProfileSnapshot(did)),
+  })
 }
 
 async function handleProfileDelete(did: string): Promise<void> {
   deleteProfileSnapshot(did)
 
   if (getOrganizationSnapshot(did)) {
-    const outcome = await recomputeLabeledOrganizationRow(did)
-    refreshHfClassification(did)
-
-    if (outcome) {
-      logRecordOutcome({
-        did,
-        collection: PROFILE_COLLECTION,
-        action: 'delete',
-        source: 'live',
-        score: outcome.score,
-        tier: outcome.tier,
-        labelAction: outcome.labelAction,
-        profileIngestMode: outcome.profileIngestMode,
-      })
-    }
-  } else {
-    logRecordOutcome({
-      did,
-      collection: PROFILE_COLLECTION,
-      action: 'delete',
-      source: 'live',
-      labelAction: 'profile-deleted',
-      profileIngestMode: 'missing',
-    })
+    enqueueOrganizationRecompute(did, 'profile-delete')
   }
+
+  logRecordOutcome({
+    did,
+    collection: PROFILE_COLLECTION,
+    action: 'delete',
+    source: 'live',
+    labelAction: getOrganizationSnapshot(did) ? 'recompute-queued' : 'profile-deleted',
+    profileIngestMode: 'missing',
+  })
 }
 
 indexer.record(async (evt) => {
-  const eventMeta = {
-    collection: evt.collection,
-    action: evt.action,
-    did: evt.did,
-    rkey: evt.rkey,
-  }
+  const startedAt = performance.now()
+  try {
+    const eventMeta = {
+      collection: evt.collection,
+      action: evt.action,
+      did: evt.did,
+      rkey: evt.rkey,
+    }
 
   if (evt.collection === PROFILE_COLLECTION) {
     if (evt.action === 'delete') {
@@ -394,31 +413,17 @@ indexer.record(async (evt) => {
     }
 
     if (getOrganizationSnapshot(evt.did)) {
-      const outcome = await recomputeLabeledOrganizationRow(evt.did)
-      refreshHfClassification(evt.did)
-
-      if (outcome) {
-        logRecordOutcome({
-          did: evt.did,
-          collection: PROFILE_COLLECTION,
-          action: evt.action,
-          source: 'live',
-          score: outcome.score,
-          tier: outcome.tier,
-          labelAction: outcome.labelAction,
-          profileIngestMode: getProfileIngestMode(getProfileSnapshot(evt.did)),
-        })
-      }
-    } else {
-      logRecordOutcome({
-        did: evt.did,
-        collection: PROFILE_COLLECTION,
-        action: evt.action,
-        source: 'live',
-        labelAction: 'profile-saved',
-        profileIngestMode: getProfileIngestMode(getProfileSnapshot(evt.did)),
-      })
+      enqueueOrganizationRecompute(evt.did, 'profile-upsert')
     }
+
+    logRecordOutcome({
+      did: evt.did,
+      collection: PROFILE_COLLECTION,
+      action: evt.action,
+      source: 'live',
+      labelAction: getOrganizationSnapshot(evt.did) ? 'recompute-queued' : 'profile-saved',
+      profileIngestMode: getProfileIngestMode(getProfileSnapshot(evt.did)),
+    })
 
     return
   }
@@ -452,20 +457,18 @@ indexer.record(async (evt) => {
     updatedAt: new Date().toISOString(),
   })
 
-  const outcome = await recomputeLabeledOrganizationRow(evt.did)
-  refreshHfClassification(evt.did)
+  enqueueOrganizationRecompute(evt.did, 'organization-upsert')
 
-  if (outcome) {
-    logRecordOutcome({
-      did: evt.did,
-      collection: ORGANIZATION_COLLECTION,
-      action: evt.action,
-      source: 'live',
-      score: outcome.score,
-      tier: outcome.tier,
-      labelAction: outcome.labelAction,
-      profileIngestMode: outcome.profileIngestMode,
-    })
+  logRecordOutcome({
+    did: evt.did,
+    collection: ORGANIZATION_COLLECTION,
+    action: evt.action,
+    source: 'live',
+    labelAction: 'recompute-queued',
+    profileIngestMode: getProfileIngestMode(getProfileSnapshot(evt.did)),
+  })
+  } finally {
+    observeTapHandlerDuration(evt.collection, evt.action, performance.now() - startedAt)
   }
 })
 
@@ -524,6 +527,84 @@ export async function syncLabelsWithDb(): Promise<void> {
     logger.info({ count: synced }, 'Synced mismatched ATProto labels with DB tiers')
   } else {
     logger.info('All ATProto labels match DB tiers')
+  }
+}
+
+/**
+ * Starts the durable recompute loop that drains debounced actor jobs after Tap
+ * events have been acknowledged. The worker performs scoring, label writes, and
+ * pending delete cleanup outside the Tap handler.
+ */
+export function startRecomputeWorker(): { destroy: () => void } {
+  let stopped = false
+  let running = false
+  let timer: NodeJS.Timeout | null = null
+
+  const tick = async (): Promise<void> => {
+    if (stopped || running) return
+    running = true
+
+    try {
+      await processPendingOrganizationDeletes('worker')
+
+      let job = claimDueRecomputeJob()
+      while (job) {
+        const currentJob = job
+        try {
+          if (currentJob.kind !== 'recompute-org') {
+            completeRecomputeJob(currentJob.id)
+            job = claimDueRecomputeJob()
+            continue
+          }
+
+          const outcome = await recomputeLabeledOrganizationRow(currentJob.key)
+          if (outcome) {
+            refreshHfClassification(currentJob.key)
+            logRecordOutcome({
+              did: currentJob.key,
+              collection: ORGANIZATION_COLLECTION,
+              action: 'recompute',
+              source: 'worker',
+              score: outcome.score,
+              tier: outcome.tier,
+              labelAction: outcome.labelAction,
+              profileIngestMode: outcome.profileIngestMode,
+            })
+          }
+
+          completeRecomputeJob(currentJob.id)
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          if (currentJob.attempts >= RECOMPUTE_MAX_ATTEMPTS) {
+            logger.error({ err, job: currentJob }, 'Recompute job exceeded max attempts; leaving failed for inspection')
+            failRecomputeJob(currentJob.id, message, RECOMPUTE_MAX_RETRY_DELAY_MS, 'failed')
+          } else {
+            const retryDelayMs = retryDelayForAttempt(currentJob.attempts)
+            failRecomputeJob(currentJob.id, message, retryDelayMs)
+            logger.error({ err, job: currentJob, retryDelayMs }, 'Recompute job failed; retry scheduled')
+          }
+        }
+
+        job = claimDueRecomputeJob()
+      }
+    } finally {
+      running = false
+    }
+  }
+
+  timer = setInterval(() => {
+    tick().catch(err => logger.error({ err }, 'Recompute worker tick failed'))
+  }, RECOMPUTE_WORKER_INTERVAL_MS)
+
+  logger.info({ counts: getRecomputeJobCounts() }, 'Recompute worker started')
+  tick().catch(err => logger.error({ err }, 'Initial recompute worker tick failed'))
+
+  return {
+    destroy: () => {
+      stopped = true
+      if (timer) clearInterval(timer)
+      logger.info({ counts: getRecomputeJobCounts() }, 'Recompute worker stopped')
+    },
   }
 }
 

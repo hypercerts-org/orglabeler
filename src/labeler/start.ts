@@ -8,6 +8,7 @@ import {
   backfillHfClassification,
   syncLabelsWithDb,
   reconcileStoredOrganizationSnapshots,
+  startRecomputeWorker,
 } from './tap-consumer'
 import { setReclassifyCallback } from '../lib/hf-classifier'
 import { startMetricsServer } from './metrics'
@@ -44,12 +45,14 @@ async function main() {
   // Fix 4: declare consumer at outer scope so shutdown can access it
   // even if a signal arrives during startup
   let consumer: Awaited<ReturnType<typeof startTapConsumer>> | undefined
+  let recomputeWorker: ReturnType<typeof startRecomputeWorker> | undefined
 
   // Fix 4: register shutdown handlers EARLY, before any async work
   async function shutdown(signal: string) {
     if (shuttingDown) return
     shuttingDown = true
     logger.info({ signal }, 'Shutting down...')
+    recomputeWorker?.destroy()
     await consumer?.destroy()
     await new Promise<void>((resolve) => {
       labelerServer.close(() => resolve())
@@ -123,7 +126,10 @@ async function main() {
   // 10. Wait for tap to be ready
   await waitForTap(TAP_URL)
 
-  // 11. Start tap consumer (replaces Jetstream subscription)
+  // 11. Start async recompute worker before Tap so persisted jobs can drain.
+  recomputeWorker = startRecomputeWorker()
+
+  // 12. Start tap consumer (replaces Jetstream subscription)
   consumer = startTapConsumer()
   logger.info('Tap consumer started — receiving backfill + live events')
   backfillHfClassification()

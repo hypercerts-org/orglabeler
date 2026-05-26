@@ -164,11 +164,14 @@ PRIMARY KEY (did, rkey, model, input_hash)
 
 ### Phase 1 — durable recompute worker
 
-- Add `recompute_jobs`.
-- Tap handler writes snapshots and upserts one `recompute-org` job per DID.
-- Job uses `run_after = now + 1–3 seconds` so profile/org backfill can coalesce.
-- Worker performs current scoring from best-known local state and applies a provisional label immediately.
-- Add simple metrics: queued/running/failed jobs, handler duration.
+Status: implemented.
+
+- `src/lib/db.ts` creates and manages `recompute_jobs` in the dashboard SQLite database.
+- Tap handlers persist profile/org snapshots or pending delete rows, upsert one `recompute-org` job per DID, then return without scoring, HuggingFace calls, or label writes.
+- Jobs use a 2 second debounce window so profile/org events can coalesce.
+- `startRecomputeWorker()` drains due jobs, recomputes from best-known local state, writes dashboard rows, applies labels, and refreshes HuggingFace classification outside the Tap ack path.
+- Organization deletes are persisted in `pending_organization_deletes` and negated/cleaned up by the worker or startup reconciliation.
+- `/metrics` exposes `orglabeler_recompute_jobs{status="..."}` for queue depth by status and `orglabeler_tap_handler_duration_ms` for Tap handler latency.
 
 ### Phase 2 — URL enrichment worker
 

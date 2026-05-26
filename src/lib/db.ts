@@ -54,6 +54,35 @@ interface PendingOrganizationDeleteRow {
   updated_at: string
 }
 
+export type RecomputeJobKind = 'recompute-org'
+export type RecomputeJobStatus = 'pending' | 'running' | 'done' | 'failed'
+
+export interface RecomputeJob {
+  id: number
+  kind: RecomputeJobKind
+  key: string
+  status: RecomputeJobStatus
+  attempts: number
+  runAfter: string
+  payload: string | null
+  lastError: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+interface RecomputeJobRow {
+  id: number
+  kind: string
+  key: string
+  status: string
+  attempts: number
+  run_after: string
+  payload: string | null
+  last_error: string | null
+  created_at: string
+  updated_at: string
+}
+
 type ActivityLogInput = {
   did: string
   rkey: string
@@ -96,6 +125,27 @@ function createActivitiesTable(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_activities_tier ON activities(tier);
     CREATE INDEX IF NOT EXISTS idx_activities_labeled_at ON activities(labeled_at);
     CREATE INDEX IF NOT EXISTS idx_activities_did ON activities(did);
+  `)
+}
+
+function createRecomputeJobsTable(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS recompute_jobs (
+      id INTEGER PRIMARY KEY,
+      kind TEXT NOT NULL,
+      key TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('pending', 'running', 'done', 'failed')),
+      attempts INTEGER NOT NULL DEFAULT 0,
+      run_after TEXT NOT NULL,
+      payload TEXT,
+      last_error TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(kind, key)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_recompute_jobs_due ON recompute_jobs(status, run_after);
+    CREATE INDEX IF NOT EXISTS idx_recompute_jobs_updated_at ON recompute_jobs(updated_at);
   `)
 }
 
@@ -146,6 +196,7 @@ export function getDb(): Database.Database {
 
   createActivitiesTable(_db)
   createSnapshotTables(_db)
+  createRecomputeJobsTable(_db)
 
   // Migration: recreate tables whose tier CHECK constraint predates the active 3-tier set.
   try {
@@ -389,6 +440,114 @@ export function getPendingOrganizationDeletes(): Array<PendingOrganizationDelete
 export function deletePendingOrganizationDelete(did: string): void {
   const db = getDb()
   db.prepare('DELETE FROM pending_organization_deletes WHERE did = ?').run(did)
+}
+
+/**
+ * Coalesces actor-level scoring work into one durable SQLite job per DID.
+ * Use this from the Tap handler after persisting snapshots so slow label work can
+ * run after Tap has acknowledged the event.
+ */
+export function enqueueRecomputeJob(
+  kind: RecomputeJobKind,
+  key: string,
+  options: { delayMs?: number; payload?: Record<string, unknown> | null } = {},
+): void {
+  const db = getDb()
+  const nowMs = Date.now()
+  const runAfter = new Date(nowMs + (options.delayMs ?? 2000)).toISOString()
+  const payload = options.payload === undefined || options.payload === null
+    ? null
+    : JSON.stringify(options.payload)
+
+  db.prepare(`
+    INSERT INTO recompute_jobs
+      (kind, key, status, attempts, run_after, payload, last_error, created_at, updated_at)
+    VALUES
+      (@kind, @key, 'pending', 0, @runAfter, @payload, NULL, datetime('now'), datetime('now'))
+    ON CONFLICT(kind, key) DO UPDATE SET
+      status = 'pending',
+      run_after = excluded.run_after,
+      payload = COALESCE(excluded.payload, recompute_jobs.payload),
+      last_error = NULL,
+      updated_at = datetime('now')
+  `).run({ kind, key, runAfter, payload })
+}
+
+/**
+ * Atomically claims the oldest due recompute job for a single worker process.
+ * Returns null when no debounced job is ready to run yet.
+ */
+export function claimDueRecomputeJob(now = new Date().toISOString()): RecomputeJob | null {
+  const db = getDb()
+  const row = db.prepare(`
+    UPDATE recompute_jobs
+    SET status = 'running',
+        attempts = attempts + 1,
+        updated_at = datetime('now')
+    WHERE id = (
+      SELECT id
+      FROM recompute_jobs
+      WHERE status = 'pending' AND run_after <= @now
+      ORDER BY run_after ASC, updated_at ASC
+      LIMIT 1
+    )
+    RETURNING id, kind, key, status, attempts, run_after, payload, last_error, created_at, updated_at
+  `).get({ now }) as RecomputeJobRow | undefined
+
+  return row ? recomputeJobRowToEntry(row) : null
+}
+
+/** Marks a recompute job as done while keeping the row available for queue metrics. */
+export function completeRecomputeJob(id: number): void {
+  const db = getDb()
+  db.prepare(`
+    UPDATE recompute_jobs
+    SET status = 'done', updated_at = datetime('now')
+    WHERE id = ?
+  `).run(id)
+}
+
+/**
+ * Records a recompute failure and schedules another attempt with bounded backoff.
+ * The unique job row is reused, so newer Tap events can still coalesce over it.
+ */
+export function failRecomputeJob(
+  id: number,
+  errorMessage: string,
+  retryDelayMs: number,
+  status: Extract<RecomputeJobStatus, 'pending' | 'failed'> = 'pending',
+): void {
+  const db = getDb()
+  const runAfter = new Date(Date.now() + retryDelayMs).toISOString()
+  db.prepare(`
+    UPDATE recompute_jobs
+    SET status = @status,
+        run_after = @runAfter,
+        last_error = @errorMessage,
+        updated_at = datetime('now')
+    WHERE id = @id
+  `).run({ id, status, runAfter, errorMessage })
+}
+
+/** Returns queue counts grouped by status for lightweight health logging and metrics. */
+export function getRecomputeJobCounts(): Record<RecomputeJobStatus, number> {
+  const db = getDb()
+  const counts: Record<RecomputeJobStatus, number> = {
+    pending: 0,
+    running: 0,
+    done: 0,
+    failed: 0,
+  }
+  const rows = db.prepare(`
+    SELECT status, COUNT(*) as count
+    FROM recompute_jobs
+    GROUP BY status
+  `).all() as Array<{ status: RecomputeJobStatus; count: number }>
+
+  for (const row of rows) {
+    counts[row.status] = row.count
+  }
+  return counts
 }
 
 // Upsert on did+rkey. Preserves existing hf_label/hf_score when the new values are null.
@@ -639,6 +798,21 @@ export function getActivityByDidRkey(did: string, rkey: string): ActivityLogEntr
     `SELECT ${ACTIVITY_SELECT_COLUMNS} FROM activities WHERE did = ? AND rkey = ?`
   ).get(did, rkey) as Record<string, unknown> | undefined
   return row ? rowToEntry(row) : null
+}
+
+function recomputeJobRowToEntry(row: RecomputeJobRow): RecomputeJob {
+  return {
+    id: row.id,
+    kind: row.kind as RecomputeJobKind,
+    key: row.key,
+    status: row.status as RecomputeJobStatus,
+    attempts: row.attempts,
+    runAfter: row.run_after,
+    payload: row.payload,
+    lastError: row.last_error,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
 }
 
 function rowToEntry(row: Record<string, unknown>): ActivityLogEntry {
