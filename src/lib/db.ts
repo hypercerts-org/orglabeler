@@ -8,6 +8,7 @@ import type {
   ProfileSnapshot,
   RuntimeLabelTier,
 } from './types'
+import type { UrlResolutionMap, UrlResolutionState } from './scoring-input'
 
 export const HF_POSITIVE_LABEL = 'well-formed actor profile'
 
@@ -83,6 +84,38 @@ interface RecomputeJobRow {
   updated_at: string
 }
 
+/** Durable URL cache status. Pending means scoring should keep optimistic provisional URL points. */
+export type UrlCheckStatus = 'pending' | 'ok' | 'failed'
+
+/** URL cache row used by the async URL enrichment worker. */
+export interface UrlCheck {
+  normalizedUrl: string
+  status: UrlCheckStatus
+  resolvable: boolean | null
+  statusCode: number | null
+  error: string | null
+  attempts: number
+  lastAttemptAt: string | null
+  checkedAt: string | null
+  expiresAt: string
+  createdAt: string
+  updatedAt: string
+}
+
+interface UrlCheckRow {
+  normalized_url: string
+  status: string
+  resolvable: number | null
+  status_code: number | null
+  error: string | null
+  attempts: number
+  last_attempt_at: string | null
+  checked_at: string | null
+  expires_at: string
+  created_at: string
+  updated_at: string
+}
+
 type ActivityLogInput = {
   did: string
   rkey: string
@@ -149,6 +182,27 @@ function createRecomputeJobsTable(db: Database.Database): void {
   `)
 }
 
+function createUrlChecksTable(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS url_checks (
+      normalized_url TEXT PRIMARY KEY,
+      status TEXT NOT NULL CHECK(status IN ('pending', 'ok', 'failed')),
+      resolvable INTEGER,
+      status_code INTEGER,
+      error TEXT,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      last_attempt_at TEXT,
+      checked_at TEXT,
+      expires_at TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_url_checks_due ON url_checks(status, expires_at);
+    CREATE INDEX IF NOT EXISTS idx_url_checks_updated_at ON url_checks(updated_at);
+  `)
+}
+
 function createSnapshotTables(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS profile_snapshots (
@@ -197,6 +251,7 @@ export function getDb(): Database.Database {
   createActivitiesTable(_db)
   createSnapshotTables(_db)
   createRecomputeJobsTable(_db)
+  createUrlChecksTable(_db)
 
   // Migration: recreate tables whose tier CHECK constraint predates the active 3-tier set.
   try {
@@ -550,6 +605,155 @@ export function getRecomputeJobCounts(): Record<RecomputeJobStatus, number> {
   return counts
 }
 
+/**
+ * Ensures a normalized public URL has a cache row for async enrichment.
+ * Fresh ok/failed rows are left untouched so repeated snapshots do not reset TTLs.
+ */
+export function upsertPendingUrlCheck(normalizedUrl: string, now = new Date().toISOString()): void {
+  const db = getDb()
+  db.prepare(`
+    INSERT INTO url_checks
+      (normalized_url, status, resolvable, status_code, error, attempts, last_attempt_at, checked_at, expires_at, created_at, updated_at)
+    VALUES
+      (@normalizedUrl, 'pending', NULL, NULL, NULL, 0, NULL, NULL, @now, datetime('now'), datetime('now'))
+    ON CONFLICT(normalized_url) DO UPDATE SET
+      status = CASE WHEN url_checks.expires_at <= @now THEN 'pending' ELSE url_checks.status END,
+      resolvable = CASE WHEN url_checks.expires_at <= @now THEN NULL ELSE url_checks.resolvable END,
+      status_code = CASE WHEN url_checks.expires_at <= @now THEN NULL ELSE url_checks.status_code END,
+      error = CASE WHEN url_checks.expires_at <= @now THEN NULL ELSE url_checks.error END,
+      attempts = CASE WHEN url_checks.expires_at <= @now THEN 0 ELSE url_checks.attempts END,
+      expires_at = CASE WHEN url_checks.expires_at <= @now THEN @now ELSE url_checks.expires_at END,
+      updated_at = CASE WHEN url_checks.expires_at <= @now THEN datetime('now') ELSE url_checks.updated_at END
+  `).run({ normalizedUrl, now })
+}
+
+/** Returns the next due URL cache row, or null when no URL check is ready. */
+export function getDueUrlCheck(now = new Date().toISOString()): UrlCheck | null {
+  const db = getDb()
+  const row = db.prepare(`
+    SELECT normalized_url, status, resolvable, status_code, error, attempts, last_attempt_at, checked_at, expires_at, created_at, updated_at
+    FROM url_checks
+    WHERE expires_at <= @now
+    ORDER BY CASE status WHEN 'pending' THEN 0 ELSE 1 END, expires_at ASC, updated_at ASC
+    LIMIT 1
+  `).get({ now }) as UrlCheckRow | undefined
+
+  return row ? urlCheckRowToEntry(row) : null
+}
+
+/** Stores a successful URL check and keeps the ok result fresh for the supplied TTL. */
+export function recordUrlCheckOk(normalizedUrl: string, statusCode: number | null, ttlMs: number): void {
+  const db = getDb()
+  const now = new Date()
+  const checkedAt = now.toISOString()
+  const expiresAt = new Date(now.getTime() + ttlMs).toISOString()
+
+  db.prepare(`
+    UPDATE url_checks
+    SET status = 'ok',
+        resolvable = 1,
+        status_code = @statusCode,
+        error = NULL,
+        attempts = 0,
+        last_attempt_at = @checkedAt,
+        checked_at = @checkedAt,
+        expires_at = @expiresAt,
+        updated_at = datetime('now')
+    WHERE normalized_url = @normalizedUrl
+  `).run({ normalizedUrl, statusCode, checkedAt, expiresAt })
+}
+
+/**
+ * Stores a failed URL check. Use status='pending' for temporary retryable
+ * failures and status='failed' only when scoring should remove URL resolve points.
+ */
+export function recordUrlCheckFailure(options: {
+  normalizedUrl: string
+  status: Extract<UrlCheckStatus, 'pending' | 'failed'>
+  resolvable: boolean | null
+  statusCode: number | null
+  error: string
+  attempts: number
+  retryAfterMs: number
+}): void {
+  const db = getDb()
+  const now = new Date()
+  const checkedAt = now.toISOString()
+  const expiresAt = new Date(now.getTime() + options.retryAfterMs).toISOString()
+
+  db.prepare(`
+    UPDATE url_checks
+    SET status = @status,
+        resolvable = @resolvable,
+        status_code = @statusCode,
+        error = @error,
+        attempts = @attempts,
+        last_attempt_at = @checkedAt,
+        checked_at = @checkedAt,
+        expires_at = @expiresAt,
+        updated_at = datetime('now')
+    WHERE normalized_url = @normalizedUrl
+  `).run({
+    normalizedUrl: options.normalizedUrl,
+    status: options.status,
+    resolvable: options.resolvable === null ? null : options.resolvable ? 1 : 0,
+    statusCode: options.statusCode,
+    error: options.error.slice(0, 1000),
+    attempts: options.attempts,
+    checkedAt,
+    expiresAt,
+  })
+}
+
+/** Returns the active scoring state for normalized URLs from the detachable URL cache. */
+export function getUrlResolutionMap(normalizedUrls: string[], now = new Date().toISOString()): UrlResolutionMap {
+  const db = getDb()
+  const uniqueUrls = [...new Set(normalizedUrls)].filter(url => url.length > 0)
+  if (uniqueUrls.length === 0) return {}
+
+  const placeholders = uniqueUrls.map(() => '?').join(', ')
+  const rows = db.prepare(`
+    SELECT normalized_url, status, expires_at
+    FROM url_checks
+    WHERE normalized_url IN (${placeholders}) AND expires_at > ?
+  `).all(...uniqueUrls, now) as Array<{ normalized_url: string; status: UrlCheckStatus; expires_at: string }>
+
+  const states: UrlResolutionMap = {}
+  for (const row of rows) {
+    const state = urlCheckStatusToResolutionState(row.status)
+    if (state !== 'unknown') {
+      states[row.normalized_url] = state
+    }
+  }
+  return states
+}
+
+/** Returns URL cache counts grouped by status for metrics and smoke tests. */
+export function getUrlCheckCounts(): Record<UrlCheckStatus, number> {
+  const db = getDb()
+  const counts: Record<UrlCheckStatus, number> = {
+    pending: 0,
+    ok: 0,
+    failed: 0,
+  }
+  const rows = db.prepare(`
+    SELECT status, COUNT(*) as count
+    FROM url_checks
+    GROUP BY status
+  `).all() as Array<{ status: UrlCheckStatus; count: number }>
+
+  for (const row of rows) {
+    counts[row.status] = row.count
+  }
+  return counts
+}
+
+function urlCheckStatusToResolutionState(status: UrlCheckStatus): UrlResolutionState {
+  if (status === 'ok') return 'ok'
+  if (status === 'failed') return 'failed'
+  return 'unknown'
+}
+
 // Upsert on did+rkey. Preserves existing hf_label/hf_score when the new values are null.
 export function logActivity(entry: ActivityLogInput, hf?: HfClassificationData): void {
   const db = getDb()
@@ -810,6 +1014,22 @@ function recomputeJobRowToEntry(row: RecomputeJobRow): RecomputeJob {
     runAfter: row.run_after,
     payload: row.payload,
     lastError: row.last_error,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
+
+function urlCheckRowToEntry(row: UrlCheckRow): UrlCheck {
+  return {
+    normalizedUrl: row.normalized_url,
+    status: row.status as UrlCheckStatus,
+    resolvable: row.resolvable === null ? null : row.resolvable === 1,
+    statusCode: row.status_code,
+    error: row.error,
+    attempts: row.attempts,
+    lastAttemptAt: row.last_attempt_at,
+    checkedAt: row.checked_at,
+    expiresAt: row.expires_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }

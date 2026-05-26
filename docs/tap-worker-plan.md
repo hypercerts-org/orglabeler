@@ -175,11 +175,14 @@ Status: implemented.
 
 ### Phase 2 — URL enrichment worker
 
-- Add `url_checks` cache.
-- Worker resolves URLs with low concurrency and short timeouts.
-- Recompute org score after URL results land.
-- Relabel only if the effective tier changes.
-- Never block Tap ack on URL results.
+Status: implemented.
+
+- `url_checks` is a detachable cache table. It stores only normalized URL resolution state and retry metadata; snapshots and activity rows do not depend on it.
+- `src/labeler/url-enrichment-worker.ts` runs as an in-process polling worker with low concurrency, short fetch timeouts, and bounded retry/backoff.
+- Scoring reads cached URL states as optional input. Missing or pending cache rows stay optimistic and keep provisional URL resolve points.
+- `ok` URL checks confirm the provisional score. Repeated hard failures mark the URL `failed`, remove resolve points on the next recompute, and enqueue `recompute-org` for affected DIDs.
+- The whole feature can be disabled with `URL_ENRICHMENT_ENABLED=false`; scoring then falls back to current provisional behavior.
+- `/metrics` exposes `orglabeler_url_checks{status="..."}` for cache state counts.
 
 ### Phase 3 — HuggingFace/BERT worker
 

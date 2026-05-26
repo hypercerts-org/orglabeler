@@ -92,6 +92,12 @@ Scores `app.certified.actor.organization` records on 13 completeness signals (10
 
 Test detection: regex patterns catch common placeholder strings (`test`, `asdf`, `lorem ipsum`, etc.) and override the score to force ⚠ Likely Test.
 
+### URL enrichment
+
+Tap handlers never fetch URLs. New records are scored immediately with optimistic provisional URL resolve points for valid-looking public URLs. A detachable in-process URL enrichment worker checks those URLs later, stores results in the independent `url_checks` cache table, and queues a recompute only when cached URL state changes.
+
+Set `URL_ENRICHMENT_ENABLED=false` to disable URL checks completely. When disabled, scoring keeps the provisional URL behavior and does not depend on the `url_checks` table.
+
 ## Scripts
 
 | Script | Description |
@@ -122,6 +128,9 @@ Test detection: regex patterns catch common placeholder strings (`test`, `asdf`,
 | `METRICS_PORT` | 4101 | Prometheus metrics port |
 | `TAP_URL` | required | URL of the separate Tap service (no localhost default) |
 | `ACTIVITY_DB_PATH` | `activity-log.db` | Activity log database path |
+| `URL_ENRICHMENT_ENABLED` | `true` | Enables async URL checks through the detachable `url_checks` cache |
+| `URL_CHECK_TIMEOUT_MS` | `4000` | Timeout for one URL resolution attempt |
+| `URL_CHECK_INTERVAL_MS` | `1000` | Poll interval for the URL enrichment worker |
 
 Tap-specific settings belong on the Tap service, not the app service. This repo only needs `TAP_URL` here; set `TAP_ADMIN_PASSWORD` on the Tap service if you use Tap admin auth.
 

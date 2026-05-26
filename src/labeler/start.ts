@@ -12,6 +12,7 @@ import {
 } from './tap-consumer'
 import { setReclassifyCallback } from '../lib/hf-classifier'
 import { startMetricsServer } from './metrics'
+import { startUrlEnrichmentWorker } from './url-enrichment-worker'
 import logger from './logger'
 
 // Fix 3 & 4: module-scope shuttingDown flag used by shutdown
@@ -46,12 +47,14 @@ async function main() {
   // even if a signal arrives during startup
   let consumer: Awaited<ReturnType<typeof startTapConsumer>> | undefined
   let recomputeWorker: ReturnType<typeof startRecomputeWorker> | undefined
+  let urlEnrichmentWorker: ReturnType<typeof startUrlEnrichmentWorker> | undefined
 
   // Fix 4: register shutdown handlers EARLY, before any async work
   async function shutdown(signal: string) {
     if (shuttingDown) return
     shuttingDown = true
     logger.info({ signal }, 'Shutting down...')
+    urlEnrichmentWorker?.destroy()
     recomputeWorker?.destroy()
     await consumer?.destroy()
     await new Promise<void>((resolve) => {
@@ -126,8 +129,9 @@ async function main() {
   // 10. Wait for tap to be ready
   await waitForTap(TAP_URL)
 
-  // 11. Start async recompute worker before Tap so persisted jobs can drain.
+  // 11. Start async workers before Tap so persisted jobs can drain.
   recomputeWorker = startRecomputeWorker()
+  urlEnrichmentWorker = startUrlEnrichmentWorker()
 
   // 12. Start tap consumer (replaces Jetstream subscription)
   consumer = startTapConsumer()

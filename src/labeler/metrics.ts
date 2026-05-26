@@ -1,6 +1,6 @@
 import express from 'express'
 import { collectDefaultMetrics, Gauge, Histogram, register } from 'prom-client'
-import { getRecomputeJobCounts } from '../lib/db'
+import { getRecomputeJobCounts, getUrlCheckCounts } from '../lib/db'
 import logger from './logger'
 
 collectDefaultMetrics()
@@ -18,6 +18,12 @@ const tapHandlerDuration = new Histogram({
   buckets: [1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000],
 })
 
+const urlChecksGauge = new Gauge({
+  name: 'orglabeler_url_checks',
+  help: 'URL enrichment cache rows grouped by status',
+  labelNames: ['status'],
+})
+
 /** Records how long the Tap handler took before the event could be acknowledged. */
 export function observeTapHandlerDuration(collection: string, action: string, durationMs: number): void {
   tapHandlerDuration.observe({ collection, action }, durationMs)
@@ -30,12 +36,20 @@ function updateRecomputeJobMetrics(): void {
   }
 }
 
+function updateUrlCheckMetrics(): void {
+  const counts = getUrlCheckCounts()
+  for (const [status, count] of Object.entries(counts)) {
+    urlChecksGauge.set({ status }, count)
+  }
+}
+
 export function startMetricsServer(port: number): ReturnType<typeof express> {
   const app = express()
 
   app.get('/metrics', async (_req, res) => {
     try {
       updateRecomputeJobMetrics()
+      updateUrlCheckMetrics()
       res.set('Content-Type', register.contentType)
       res.end(await register.metrics())
     } catch (err) {

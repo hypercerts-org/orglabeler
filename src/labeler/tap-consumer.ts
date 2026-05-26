@@ -31,6 +31,7 @@ import { buildMergedScoringInput } from '../lib/scoring-input'
 import { salvageProfileFallback } from '../lib/profile-fallback'
 import logger from './logger'
 import { observeTapHandlerDuration } from './metrics'
+import { enqueueUrlChecksForDid, getUrlResolutionMapForDid } from './url-enrichment-worker'
 import type { ActivityRecord, ProfileFallbackProfile, ProfileSnapshot, RuntimeLabelTier } from '../lib/types'
 import { $safeParse as $safeParseProfile } from '../lexicons/app/certified/actor/profile.defs'
 import { $safeParse } from '../lexicons/app/certified/actor/organization.defs'
@@ -180,6 +181,7 @@ export async function recomputeLabeledOrganizationRow(did: string): Promise<Orga
     organization: organization.payload,
     profileValidationNotes: profile?.validationNotes ?? [],
   })
+  scoringInput.urlResolution = getUrlResolutionMapForDid(did)
   const merged = getMergedActorDisplay({
     did,
     profile: profile?.payload ?? null,
@@ -559,6 +561,7 @@ export function startRecomputeWorker(): { destroy: () => void } {
 
           const outcome = await recomputeLabeledOrganizationRow(currentJob.key)
           if (outcome) {
+            enqueueUrlChecksForDid(currentJob.key)
             refreshHfClassification(currentJob.key)
             logRecordOutcome({
               did: currentJob.key,

@@ -1,5 +1,5 @@
 import type { LabelTier, ScoreBreakdown, ScoreResult } from './types'
-import type { MergedScoringInput } from './scoring-input'
+import type { MergedScoringInput, UrlResolutionMap, UrlResolutionState } from './scoring-input'
 import { AUTHENTICITY_FAILURE_TIER, COMPLETENESS_WEIGHTS, FOUNDED_DATE_AGE_BUCKETS, SCORE_THRESHOLDS } from './constants'
 import { evaluateMergedActorAuthenticity } from './scoring-authenticity'
 import { validateOrganizationLocationRef } from './location-utils'
@@ -58,9 +58,17 @@ function scoreWebsitePresent(website: string | null): number {
   return website ? COMPLETENESS_WEIGHTS.websitePresent : 0
 }
 
-function scoreWebsiteResolves(website: string | null): number {
+function getUrlResolutionState(normalizedUrl: string, urlResolution?: UrlResolutionMap): UrlResolutionState {
+  return urlResolution?.[normalizedUrl] ?? 'unknown'
+}
+
+function scoreWebsiteResolves(website: string | null, urlResolution?: UrlResolutionMap): number {
   const normalized = normalizePublicWebsiteUrl(website)
-  return normalized ? COMPLETENESS_WEIGHTS.websiteResolves : 0
+  if (!normalized) return 0
+
+  return getUrlResolutionState(normalized, urlResolution) === 'failed'
+    ? 0
+    : COMPLETENESS_WEIGHTS.websiteResolves
 }
 
 function scoreWebsiteMatchesName(displayName: string, website: string | null): number {
@@ -72,13 +80,15 @@ function scoreOrganizationUrlsPresent(urls: MergedScoringInput['urls']): number 
   return (urls ?? []).length > 0 ? COMPLETENESS_WEIGHTS.organizationUrlsPresent : 0
 }
 
-function scoreOrganizationUrlsResolve(urls: MergedScoringInput['urls']): number {
+function scoreOrganizationUrlsResolve(urls: MergedScoringInput['urls'], urlResolution?: UrlResolutionMap): number {
   const normalizedUrls = (Array.isArray(urls) ? urls : [])
     .map(item => normalizePublicWebsiteUrl(item?.url))
     .filter((url): url is string => Boolean(url))
     .slice(0, MAX_ORGANIZATION_URLS_TO_CHECK)
 
-  return normalizedUrls.length > 0 ? COMPLETENESS_WEIGHTS.organizationUrlsResolve : 0
+  const hasResolvableUrl = normalizedUrls.some(url => getUrlResolutionState(url, urlResolution) !== 'failed')
+
+  return hasResolvableUrl ? COMPLETENESS_WEIGHTS.organizationUrlsResolve : 0
 }
 
 function scoreLocation(location: MergedScoringInput['location']): number {
@@ -132,8 +142,8 @@ export async function scoreActivity(record: MergedScoringInput): Promise<ScoreRe
     }
   }
 
-  const websiteResolves = scoreWebsiteResolves(record.profileWebsite)
-  const organizationUrlsResolve = scoreOrganizationUrlsResolve(record.urls)
+  const websiteResolves = scoreWebsiteResolves(record.profileWebsite, record.urlResolution)
+  const organizationUrlsResolve = scoreOrganizationUrlsResolve(record.urls, record.urlResolution)
   const now = Date.now()
 
   const displayName = scoreDisplayName(record.displayNameSource, record.displayName)

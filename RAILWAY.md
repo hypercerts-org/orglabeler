@@ -62,6 +62,9 @@ Optional:
 | `LABELER_PORT` | Internal labeler HTTP port behind Caddy | `4100` |
 | `METRICS_PORT` | Metrics port | `4101` |
 | `RESET_DB` | Clear app DB files on startup | _(empty)_ |
+| `URL_ENRICHMENT_ENABLED` | Enable detachable async URL checks through `url_checks` | `true` |
+| `URL_CHECK_TIMEOUT_MS` | Timeout for one URL resolution attempt | `4000` |
+| `URL_CHECK_INTERVAL_MS` | URL worker polling interval | `1000` |
 
 Start the app with:
 

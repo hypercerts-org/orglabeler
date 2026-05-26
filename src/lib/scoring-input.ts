@@ -8,6 +8,12 @@ export interface MergedOrganizationUrlItem {
   label: string | null
 }
 
+/** Cached URL resolution state used by scoring without performing network I/O. */
+export type UrlResolutionState = 'unknown' | 'ok' | 'failed'
+
+/** Map of normalized public URL to its latest durable resolution state. */
+export type UrlResolutionMap = Record<string, UrlResolutionState>
+
 export interface MergedScoringInput {
   did: string
   displayName: string
@@ -20,6 +26,7 @@ export interface MergedScoringInput {
   hasBanner: boolean
   organizationType: string[]
   urls: MergedOrganizationUrlItem[]
+  urlResolution?: UrlResolutionMap
   location: OrganizationRecord['location'] | null
   foundedDate: string | null
 }
