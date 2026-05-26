@@ -82,6 +82,17 @@ function isPrivateIpv6(hostname: string): boolean {
   )
 }
 
+/** Returns true when a literal IP address is globally routable enough for URL enrichment fetches. */
+export function isPublicNetworkAddress(address: string): boolean {
+  const normalized = address.replace(/^\[(.*)\]$/, '$1').toLowerCase()
+  const ipVersion = isIP(normalized)
+
+  if (ipVersion === 4) return !isPrivateIpv4(normalized)
+  if (ipVersion === 6) return !isPrivateIpv6(normalized)
+
+  return false
+}
+
 function isPublicHostname(hostname: string): boolean {
   const normalized = normalizeHostname(hostname)
 
@@ -90,8 +101,7 @@ function isPublicHostname(hostname: string): boolean {
   }
 
   const ipVersion = isIP(normalized)
-  if (ipVersion === 4) return !isPrivateIpv4(normalized)
-  if (ipVersion === 6) return !isPrivateIpv6(normalized)
+  if (ipVersion === 4 || ipVersion === 6) return isPublicNetworkAddress(normalized)
 
   if (normalized.startsWith('.') || normalized.endsWith('.') || normalized.includes('..')) return false
   if (/^[0-9.]+$/.test(normalized)) return false

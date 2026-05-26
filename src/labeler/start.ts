@@ -26,15 +26,26 @@ async function waitForTap(url: string, maxAttempts = 30, intervalMs = 1000): Pro
         : undefined
       const res = await fetch(`${url}/health`, authHeader ? { headers: authHeader } : undefined)
       if (TAP_ADMIN_PASSWORD) {
+        if (res.status === 401 || res.status === 403) {
+          throw new Error('Tap rejected TAP_ADMIN_PASSWORD; check that the app and Tap service use the same admin password')
+        }
         if (res.ok) {
           logger.info({ status: res.status }, 'Tap is healthy')
           return
         }
-      } else if (res.status < 500) {
-        logger.info({ status: res.status }, 'Tap is healthy')
-        return
+      } else {
+        if (res.status === 401 || res.status === 403) {
+          throw new Error('Tap requires admin auth. Set TAP_ADMIN_PASSWORD on the app service to match the Tap service.')
+        }
+        if (res.status < 500) {
+          logger.info({ status: res.status }, 'Tap is healthy')
+          return
+        }
       }
-    } catch {
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('TAP_ADMIN_PASSWORD')) {
+        throw err
+      }
       // tap not ready yet — connection refused or similar
     }
     await new Promise(r => setTimeout(r, intervalMs))

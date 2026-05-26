@@ -127,12 +127,14 @@ Set `URL_ENRICHMENT_ENABLED=false` to disable URL checks completely. When disabl
 | `LABELER_PORT` | 4100 | Internal labeler server port behind Caddy |
 | `METRICS_PORT` | 4101 | Prometheus metrics port |
 | `TAP_URL` | required | URL of the separate Tap service (no localhost default) |
+| `TAP_ADMIN_PASSWORD` | empty | App-side password for Tap admin auth; must match the Tap service when auth is enabled |
 | `ACTIVITY_DB_PATH` | `activity-log.db` | Activity log database path |
 | `URL_ENRICHMENT_ENABLED` | `true` | Enables async URL checks through the detachable `url_checks` cache |
 | `URL_CHECK_TIMEOUT_MS` | `4000` | Timeout for one URL resolution attempt |
 | `URL_CHECK_INTERVAL_MS` | `1000` | Poll interval for the URL enrichment worker |
+| `URL_CHECK_MAX_URLS_PER_DID` | `5` | Maximum profile/organization URLs cached and checked per DID |
 
-Tap-specific settings belong on the Tap service, not the app service. This repo only needs `TAP_URL` here; set `TAP_ADMIN_PASSWORD` on the Tap service if you use Tap admin auth.
+Tap runtime settings belong on the Tap service. If the Tap service sets `TAP_ADMIN_PASSWORD`, set the same value on the app service so health checks and the Tap WebSocket can authenticate.
 
 ## Production Deployment
 

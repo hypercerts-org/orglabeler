@@ -50,6 +50,7 @@ interface PendingOrganizationDeleteRow {
   rkey: string
   attempts: number
   last_attempt_at: string | null
+  next_attempt_at: string | null
   last_error: string | null
   created_at: string
   updated_at: string
@@ -232,6 +233,7 @@ function createSnapshotTables(db: Database.Database): void {
       rkey TEXT NOT NULL,
       attempts INTEGER NOT NULL DEFAULT 0,
       last_attempt_at TEXT,
+      next_attempt_at TEXT,
       last_error TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -298,6 +300,12 @@ export function getDb(): Database.Database {
   if (!profileCols.includes('validation_notes')) {
     _db.exec("ALTER TABLE profile_snapshots ADD COLUMN validation_notes TEXT NOT NULL DEFAULT '[]'")
   }
+
+  const pendingDeleteCols = (_db.prepare("PRAGMA table_info(pending_organization_deletes)").all() as Array<{ name: string }>).map(c => c.name)
+  if (!pendingDeleteCols.includes('next_attempt_at')) {
+    _db.exec('ALTER TABLE pending_organization_deletes ADD COLUMN next_attempt_at TEXT')
+  }
+  _db.exec('CREATE INDEX IF NOT EXISTS idx_pending_organization_deletes_next_attempt ON pending_organization_deletes(next_attempt_at)')
 
   return _db
 }
@@ -461,35 +469,45 @@ export function upsertPendingOrganizationDelete(did: string, rkey: string, recor
   const db = getDb()
   db.prepare(`
     INSERT INTO pending_organization_deletes
-      (did, record_uri, rkey, attempts, last_attempt_at, last_error, created_at, updated_at)
+      (did, record_uri, rkey, attempts, last_attempt_at, next_attempt_at, last_error, created_at, updated_at)
     VALUES
-      (@did, @recordUri, @rkey, 0, NULL, NULL, datetime('now'), datetime('now'))
+      (@did, @recordUri, @rkey, 0, NULL, NULL, NULL, datetime('now'), datetime('now'))
     ON CONFLICT(did) DO UPDATE SET
       record_uri = excluded.record_uri,
       rkey = excluded.rkey,
+      next_attempt_at = NULL,
       updated_at = excluded.updated_at
   `).run({ did, rkey, recordUri })
 }
 
-export function recordPendingOrganizationDeleteAttempt(did: string, errorMessage?: string | null): void {
+export function recordPendingOrganizationDeleteAttempt(did: string, errorMessage?: string | null, retryDelayMs = 60_000): void {
   const db = getDb()
+  const nextAttemptAt = new Date(Date.now() + retryDelayMs).toISOString()
   db.prepare(`
     UPDATE pending_organization_deletes
     SET attempts = attempts + 1,
         last_attempt_at = datetime('now'),
+        next_attempt_at = @nextAttemptAt,
         last_error = @lastError,
         updated_at = datetime('now')
     WHERE did = @did
-  `).run({ did, lastError: errorMessage ?? null })
+  `).run({ did, nextAttemptAt, lastError: errorMessage ?? null })
 }
 
-export function getPendingOrganizationDeletes(): Array<PendingOrganizationDeleteRow> {
+export function getPendingOrganizationDeletes(now = new Date().toISOString()): Array<PendingOrganizationDeleteRow> {
   const db = getDb()
   return db.prepare(`
-    SELECT did, record_uri, rkey, attempts, last_attempt_at, last_error, created_at, updated_at
+    SELECT did, record_uri, rkey, attempts, last_attempt_at, next_attempt_at, last_error, created_at, updated_at
     FROM pending_organization_deletes
+    WHERE next_attempt_at IS NULL OR next_attempt_at <= @now
     ORDER BY updated_at ASC
-  `).all() as Array<PendingOrganizationDeleteRow>
+  `).all({ now }) as Array<PendingOrganizationDeleteRow>
+}
+
+export function hasPendingOrganizationDelete(did: string): boolean {
+  const db = getDb()
+  const row = db.prepare('SELECT 1 FROM pending_organization_deletes WHERE did = ? LIMIT 1').get(did)
+  return Boolean(row)
 }
 
 export function deletePendingOrganizationDelete(did: string): void {
@@ -521,6 +539,7 @@ export function enqueueRecomputeJob(
       (@kind, @key, 'pending', 0, @runAfter, @payload, NULL, datetime('now'), datetime('now'))
     ON CONFLICT(kind, key) DO UPDATE SET
       status = 'pending',
+      attempts = CASE WHEN recompute_jobs.status IN ('done', 'failed') THEN 0 ELSE recompute_jobs.attempts END,
       run_after = excluded.run_after,
       payload = COALESCE(excluded.payload, recompute_jobs.payload),
       last_error = NULL,
@@ -557,7 +576,10 @@ export function completeRecomputeJob(id: number): void {
   const db = getDb()
   db.prepare(`
     UPDATE recompute_jobs
-    SET status = 'done', updated_at = datetime('now')
+    SET status = 'done',
+        attempts = 0,
+        last_error = NULL,
+        updated_at = datetime('now')
     WHERE id = ?
   `).run(id)
 }
@@ -566,6 +588,21 @@ export function completeRecomputeJob(id: number): void {
  * Records a recompute failure and schedules another attempt with bounded backoff.
  * The unique job row is reused, so newer Tap events can still coalesce over it.
  */
+export function recoverStaleRunningRecomputeJobs(staleAfterMs: number): number {
+  const db = getDb()
+  const staleSeconds = Math.max(1, Math.ceil(staleAfterMs / 1000))
+  const result = db.prepare(`
+    UPDATE recompute_jobs
+    SET status = 'pending',
+        run_after = @now,
+        last_error = 'Recovered stale running recompute job after process interruption',
+        updated_at = datetime('now')
+    WHERE status = 'running' AND updated_at <= datetime('now', @staleModifier)
+  `).run({ now: new Date().toISOString(), staleModifier: `-${staleSeconds} seconds` })
+
+  return result.changes
+}
+
 export function failRecomputeJob(
   id: number,
   errorMessage: string,

@@ -7,7 +7,7 @@ collectDefaultMetrics()
 
 const recomputeJobsGauge = new Gauge({
   name: 'orglabeler_recompute_jobs',
-  help: 'Durable recompute jobs grouped by status',
+  help: 'Durable recompute job rows grouped by status; done rows are retained coalescing state, not active queue depth',
   labelNames: ['status'],
 })
 

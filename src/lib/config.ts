@@ -45,6 +45,8 @@ export const URL_CHECK_RETRY_BASE_MS = integerEnv('URL_CHECK_RETRY_BASE_MS', 5 *
 export const URL_CHECK_MAX_RETRY_MS = integerEnv('URL_CHECK_MAX_RETRY_MS', 60 * 60 * 1000)
 /** Number of hard failures required before URL scoring removes resolve points. */
 export const URL_CHECK_HARD_FAILURE_ATTEMPTS = integerEnv('URL_CHECK_HARD_FAILURE_ATTEMPTS', 2)
+/** Maximum profile/organization URLs to cache and check per DID. */
+export const URL_CHECK_MAX_URLS_PER_DID = integerEnv('URL_CHECK_MAX_URLS_PER_DID', 5)
 
 export function validateLabelerConfig(): void {
   const required: [string, string][] = [

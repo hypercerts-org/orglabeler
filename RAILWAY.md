@@ -37,6 +37,7 @@ Required:
 | `SIGNING_KEY` | Labeler private key |
 | `NEXT_PUBLIC_LABELER_ENDPOINT` | Public HTTPS URL of the app service |
 | `TAP_URL` | Required URL of the separate Tap service; no localhost default |
+| `TAP_ADMIN_PASSWORD` | App-side Tap admin password; required when the Tap service enables admin auth |
 
 Usually needed for setup/sync:
 
@@ -65,6 +66,7 @@ Optional:
 | `URL_ENRICHMENT_ENABLED` | Enable detachable async URL checks through `url_checks` | `true` |
 | `URL_CHECK_TIMEOUT_MS` | Timeout for one URL resolution attempt | `4000` |
 | `URL_CHECK_INTERVAL_MS` | URL worker polling interval | `1000` |
+| `URL_CHECK_MAX_URLS_PER_DID` | Maximum profile/organization URLs cached and checked per DID | `5` |
 
 Start the app with:
 

@@ -1,9 +1,12 @@
+import { lookup } from 'node:dns/promises'
+
 import {
   URL_CHECK_DISCOVERY_INTERVAL_MS,
   URL_CHECK_FAILED_TTL_MS,
   URL_CHECK_HARD_FAILURE_ATTEMPTS,
   URL_CHECK_INTERVAL_MS,
   URL_CHECK_MAX_RETRY_MS,
+  URL_CHECK_MAX_URLS_PER_DID,
   URL_CHECK_OK_TTL_MS,
   URL_CHECK_RETRY_BASE_MS,
   URL_CHECK_TIMEOUT_MS,
@@ -22,12 +25,13 @@ import {
   upsertPendingUrlCheck,
   type UrlCheck,
 } from '../lib/db'
-import { normalizePublicWebsiteUrl } from '../lib/website-utils'
+import { isPublicNetworkAddress, normalizePublicWebsiteUrl } from '../lib/website-utils'
 import type { UrlResolutionMap, UrlResolutionState } from '../lib/scoring-input'
 import logger from './logger'
 
 const URL_RECOMPUTE_DELAY_MS = 0
 const URL_CHECK_USER_AGENT = 'orglabeler-url-enrichment/1.0'
+const URL_CHECK_MAX_REDIRECTS = 5
 
 type UrlCheckOutcome =
   | { kind: 'ok'; statusCode: number | null }
@@ -58,9 +62,14 @@ function collectRawUrlsForDid(did: string): Array<string | null | undefined> {
   if (!organization) return []
 
   const profile = getProfileSnapshot(did)
-  const organizationUrls = (organization.payload.urls ?? []).map(item => item?.url)
+  const urls: Array<string | null | undefined> = [profile?.payload.website]
 
-  return [profile?.payload.website, ...organizationUrls]
+  for (const item of organization.payload.urls ?? []) {
+    if (urls.length >= URL_CHECK_MAX_URLS_PER_DID) break
+    urls.push(item?.url)
+  }
+
+  return urls.slice(0, URL_CHECK_MAX_URLS_PER_DID)
 }
 
 /** Returns the normalized public URLs currently referenced by a DID's local snapshots. */
@@ -118,17 +127,79 @@ function isHardFailureStatus(status: number): boolean {
   return status === 404 || status === 410
 }
 
+async function lookupHostAddresses(hostname: string): Promise<Array<{ address: string }>> {
+  let timeout: NodeJS.Timeout | null = null
+
+  try {
+    return await Promise.race([
+      lookup(hostname, { all: true }),
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => reject(new Error(`DNS lookup timed out after ${URL_CHECK_TIMEOUT_MS}ms for ${hostname}`)), URL_CHECK_TIMEOUT_MS)
+      }),
+    ])
+  } finally {
+    if (timeout) clearTimeout(timeout)
+  }
+}
+
+async function assertPublicResolvedHost(normalizedUrl: string): Promise<void> {
+  const hostname = new URL(normalizedUrl).hostname
+
+  if (isPublicNetworkAddress(hostname)) return
+
+  const addresses = await lookupHostAddresses(hostname)
+  if (addresses.length === 0) {
+    throw new Error(`DNS lookup returned no addresses for ${hostname}`)
+  }
+
+  const privateAddress = addresses.find(address => !isPublicNetworkAddress(address.address))
+  if (privateAddress) {
+    throw new Error(`URL host resolved to non-public address ${privateAddress.address}`)
+  }
+}
+
+function normalizeRedirectTarget(location: string | null, currentUrl: string): string | null {
+  if (!location) return null
+
+  try {
+    return normalizePublicWebsiteUrl(new URL(location, currentUrl).toString())
+  } catch {
+    return null
+  }
+}
+
 async function fetchUrl(url: string, method: 'HEAD' | 'GET', signal: AbortSignal): Promise<Response> {
-  return fetch(url, {
-    method,
-    redirect: 'follow',
-    signal,
-    headers: {
-      'User-Agent': URL_CHECK_USER_AGENT,
-      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      ...(method === 'GET' ? { Range: 'bytes=0-0' } : {}),
-    },
-  })
+  let currentUrl = url
+
+  for (let redirectCount = 0; redirectCount <= URL_CHECK_MAX_REDIRECTS; redirectCount++) {
+    await assertPublicResolvedHost(currentUrl)
+
+    const response = await fetch(currentUrl, {
+      method,
+      redirect: 'manual',
+      signal,
+      headers: {
+        'User-Agent': URL_CHECK_USER_AGENT,
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        ...(method === 'GET' ? { Range: 'bytes=0-0' } : {}),
+      },
+    })
+
+    if (response.status < 300 || response.status >= 400) {
+      return response
+    }
+
+    const nextUrl = normalizeRedirectTarget(response.headers.get('location'), currentUrl)
+    await response.body?.cancel()
+
+    if (!nextUrl) {
+      throw new Error(`Unsafe or missing redirect target from ${currentUrl}`)
+    }
+
+    currentUrl = nextUrl
+  }
+
+  throw new Error(`Too many redirects from ${url}`)
 }
 
 async function resolveUrl(normalizedUrl: string): Promise<UrlCheckOutcome> {

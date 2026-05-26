@@ -171,14 +171,14 @@ Status: implemented.
 - Jobs use a 2 second debounce window so profile/org events can coalesce.
 - `startRecomputeWorker()` drains due jobs, recomputes from best-known local state, writes dashboard rows, applies labels, and refreshes HuggingFace classification outside the Tap ack path.
 - Organization deletes are persisted in `pending_organization_deletes` and negated/cleaned up by the worker or startup reconciliation.
-- `/metrics` exposes `orglabeler_recompute_jobs{status="..."}` for queue depth by status and `orglabeler_tap_handler_duration_ms` for Tap handler latency.
+- `/metrics` exposes `orglabeler_recompute_jobs{status="..."}` for durable job row status and `orglabeler_tap_handler_duration_ms` for Tap handler latency.
 
 ### Phase 2 — URL enrichment worker
 
 Status: implemented.
 
 - `url_checks` is a detachable cache table. It stores only normalized URL resolution state and retry metadata; snapshots and activity rows do not depend on it.
-- `src/labeler/url-enrichment-worker.ts` runs as an in-process polling worker with low concurrency, short fetch timeouts, and bounded retry/backoff.
+- `src/labeler/url-enrichment-worker.ts` runs as an in-process polling worker with low concurrency, short fetch timeouts, manual redirect validation, bounded URLs per DID, and bounded retry/backoff.
 - Scoring reads cached URL states as optional input. Missing or pending cache rows stay optimistic and keep provisional URL resolve points.
 - `ok` URL checks confirm the provisional score. Repeated hard failures mark the URL `failed`, remove resolve points on the next recompute, and enqueue `recompute-org` for affected DIDs.
 - The whole feature can be disabled with `URL_ENRICHMENT_ENABLED=false`; scoring then falls back to current provisional behavior.

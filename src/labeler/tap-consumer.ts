@@ -11,6 +11,8 @@ import {
   enqueueRecomputeJob,
   failRecomputeJob,
   getRecomputeJobCounts,
+  hasPendingOrganizationDelete,
+  recoverStaleRunningRecomputeJobs,
   getProfileSnapshot,
   getOrganizationSnapshot,
   getAllOrganizationSnapshots,
@@ -46,6 +48,9 @@ const RECOMPUTE_DEBOUNCE_MS = 2000
 const RECOMPUTE_WORKER_INTERVAL_MS = 500
 const RECOMPUTE_MAX_RETRY_DELAY_MS = 60_000
 const RECOMPUTE_MAX_ATTEMPTS = 10
+const RECOMPUTE_STALE_RUNNING_AFTER_MS = 5 * 60_000
+const PENDING_DELETE_RETRY_BASE_MS = 2000
+const PENDING_DELETE_MAX_RETRY_MS = 60_000
 
 const indexer = new SimpleIndexer()
 
@@ -122,6 +127,11 @@ function retryDelayForAttempt(attempts: number): number {
   return Math.min(RECOMPUTE_MAX_RETRY_DELAY_MS, RECOMPUTE_DEBOUNCE_MS * (2 ** exponent))
 }
 
+function pendingDeleteRetryDelayForAttempt(attempts: number): number {
+  const exponent = Math.max(0, attempts - 1)
+  return Math.min(PENDING_DELETE_MAX_RETRY_MS, PENDING_DELETE_RETRY_BASE_MS * (2 ** exponent))
+}
+
 function buildHfText(
   profileSnapshot: ReturnType<typeof getProfileSnapshot>,
   organization: ActivityRecord,
@@ -171,6 +181,8 @@ type OrganizationRecomputeOutcome = {
 }
 
 export async function recomputeLabeledOrganizationRow(did: string): Promise<OrganizationRecomputeOutcome | null> {
+  if (hasPendingOrganizationDelete(did)) return null
+
   const organization = getOrganizationSnapshot(did)
   if (!organization) return null
 
@@ -206,12 +218,11 @@ export async function recomputeLabeledOrganizationRow(did: string): Promise<Orga
       })
     } catch (err) {
       logger.error({ err, did, rkey: organization.rkey }, 'Error logging organization row')
-      return null
+      throw err
     }
 
     if (!isRuntimeLabelTier(result.tier)) {
-      logger.error({ did, rkey: organization.rkey, tier: result.tier }, 'Scoring produced unsupported runtime tier')
-      return null
+      throw new Error(`Scoring produced unsupported runtime tier: ${result.tier}`)
     }
 
     const currentLabels = await fetchCurrentLabels(organization.recordUri)
@@ -229,7 +240,7 @@ export async function recomputeLabeledOrganizationRow(did: string): Promise<Orga
       }
     } catch (err) {
       logger.error({ err, uri: organization.recordUri, did }, 'Error applying organization label (score still saved)')
-      return null
+      throw err
     }
 
     return {
@@ -239,8 +250,8 @@ export async function recomputeLabeledOrganizationRow(did: string): Promise<Orga
       profileIngestMode,
     }
   } catch (err) {
-    logger.error({ err, did, rkey: organization.rkey }, 'Error scoring organization snapshot')
-    return null
+    logger.error({ err, did, rkey: organization.rkey }, 'Error recomputing organization snapshot')
+    throw err
   }
 }
 
@@ -269,10 +280,12 @@ async function processPendingOrganizationDeletes(source: 'startup' | 'worker'): 
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      recordPendingOrganizationDeleteAttempt(pendingDelete.did, message)
+      const attempts = pendingDelete.attempts + 1
+      const retryDelayMs = pendingDeleteRetryDelayForAttempt(attempts)
+      recordPendingOrganizationDeleteAttempt(pendingDelete.did, message, retryDelayMs)
       logger.error(
-        { err, did: pendingDelete.did, rkey: pendingDelete.rkey, uri: pendingDelete.record_uri, source },
-        'Pending organization delete negation failed; will retry later',
+        { err, did: pendingDelete.did, rkey: pendingDelete.rkey, uri: pendingDelete.record_uri, source, retryDelayMs },
+        'Pending organization delete negation failed; retry scheduled',
       )
     }
   }
@@ -315,7 +328,7 @@ async function handleOrganizationDelete(did: string, rkey: string): Promise<void
   const recordUri = organization?.recordUri ?? `at://${did}/${ORGANIZATION_COLLECTION}/${rkey}`
 
   upsertPendingOrganizationDelete(did, rkey, recordUri)
-  enqueueOrganizationRecompute(did, 'organization-delete')
+  deleteOrganizationRecordState(did, rkey)
 
   logRecordOutcome({
     did,
@@ -354,121 +367,121 @@ indexer.record(async (evt) => {
       rkey: evt.rkey,
     }
 
-  if (evt.collection === PROFILE_COLLECTION) {
+    if (evt.collection === PROFILE_COLLECTION) {
+      if (evt.action === 'delete') {
+        await handleProfileDelete(evt.did)
+        return
+      }
+
+      if (!evt.record) {
+        logger.warn(eventMeta, 'Skipping profile event with missing record payload')
+        return
+      }
+
+      const parsed = $safeParseProfile(evt.record)
+      if (parsed.success) {
+        upsertProfileSnapshot({
+          did: evt.did,
+          recordUri: `at://${evt.did}/${PROFILE_COLLECTION}/${evt.rkey}`,
+          rkey: evt.rkey,
+          payload: parsed.value,
+          validationNotes: [],
+          updatedAt: new Date().toISOString(),
+        })
+      } else {
+        const fallback = salvageProfileFallback(evt.record)
+        const preserved = fallback.mode === 'fallback'
+          ? summarizeFallbackPreservation(fallback.profile)
+          : summarizeFallbackPreservation(null)
+
+        logger.warn(
+          { ...eventMeta, reason: parsed.reason?.message },
+          'Profile record failed strict lexicon validation; attempting fallback',
+        )
+
+        if (fallback.mode === 'unusable') {
+          const { noteCount, noteSummary } = summarizeValidationNotes(fallback.validationNotes)
+
+          logger.warn(
+            {
+              ...eventMeta,
+              fallbackSucceeded: false,
+              reason: parsed.reason?.message,
+              noteCount,
+              noteSummary,
+              fallbackReason: fallback.validationNotes[0],
+              preserved,
+            },
+            'Profile record was unusable after fallback; skipping',
+          )
+          return
+        }
+
+        upsertProfileSnapshot({
+          did: evt.did,
+          recordUri: `at://${evt.did}/${PROFILE_COLLECTION}/${evt.rkey}`,
+          rkey: evt.rkey,
+          payload: fallback.profile as ProfileSnapshot['payload'],
+          validationNotes: fallback.validationNotes,
+          updatedAt: new Date().toISOString(),
+        })
+      }
+
+      if (getOrganizationSnapshot(evt.did)) {
+        enqueueOrganizationRecompute(evt.did, 'profile-upsert')
+      }
+
+      logRecordOutcome({
+        did: evt.did,
+        collection: PROFILE_COLLECTION,
+        action: evt.action,
+        source: 'live',
+        labelAction: getOrganizationSnapshot(evt.did) ? 'recompute-queued' : 'profile-saved',
+        profileIngestMode: getProfileIngestMode(getProfileSnapshot(evt.did)),
+      })
+
+      return
+    }
+
+    if (evt.collection !== ORGANIZATION_COLLECTION) {
+      return
+    }
+
     if (evt.action === 'delete') {
-      await handleProfileDelete(evt.did)
+      await handleOrganizationDelete(evt.did, evt.rkey)
       return
     }
 
     if (!evt.record) {
-      logger.warn(eventMeta, 'Skipping profile event with missing record payload')
+      logger.warn(eventMeta, 'Skipping organization event with missing record payload')
       return
     }
 
-    const parsed = $safeParseProfile(evt.record)
-    if (parsed.success) {
-      upsertProfileSnapshot({
-        did: evt.did,
-        recordUri: `at://${evt.did}/${PROFILE_COLLECTION}/${evt.rkey}`,
-        rkey: evt.rkey,
-        payload: parsed.value,
-        validationNotes: [],
-        updatedAt: new Date().toISOString(),
-      })
-    } else {
-      const fallback = salvageProfileFallback(evt.record)
-      const preserved = fallback.mode === 'fallback'
-        ? summarizeFallbackPreservation(fallback.profile)
-        : summarizeFallbackPreservation(null)
-
-      logger.warn(
-        { ...eventMeta, reason: parsed.reason?.message },
-        'Profile record failed strict lexicon validation; attempting fallback',
-      )
-
-      if (fallback.mode === 'unusable') {
-        const { noteCount, noteSummary } = summarizeValidationNotes(fallback.validationNotes)
-
-        logger.warn(
-          {
-            ...eventMeta,
-            fallbackSucceeded: false,
-            reason: parsed.reason?.message,
-            noteCount,
-            noteSummary,
-            fallbackReason: fallback.validationNotes[0],
-            preserved,
-          },
-          'Profile record was unusable after fallback; skipping',
-        )
-        return
-      }
-
-      upsertProfileSnapshot({
-        did: evt.did,
-        recordUri: `at://${evt.did}/${PROFILE_COLLECTION}/${evt.rkey}`,
-        rkey: evt.rkey,
-        payload: fallback.profile as ProfileSnapshot['payload'],
-        validationNotes: fallback.validationNotes,
-        updatedAt: new Date().toISOString(),
-      })
+    // Validate against the app.certified.actor.organization lexicon
+    const parsed = $safeParse(evt.record)
+    if (!parsed.success) {
+      logger.warn({ ...eventMeta, reason: parsed.reason?.message }, 'Organization record failed lexicon validation — skipping')
+      return
     }
+    const record = parsed.value as ActivityRecord
+    upsertOrganizationSnapshot({
+      did: evt.did,
+      recordUri: `at://${evt.did}/${ORGANIZATION_COLLECTION}/${evt.rkey}`,
+      rkey: evt.rkey,
+      payload: record,
+      updatedAt: new Date().toISOString(),
+    })
 
-    if (getOrganizationSnapshot(evt.did)) {
-      enqueueOrganizationRecompute(evt.did, 'profile-upsert')
-    }
+    enqueueOrganizationRecompute(evt.did, 'organization-upsert')
 
     logRecordOutcome({
       did: evt.did,
-      collection: PROFILE_COLLECTION,
+      collection: ORGANIZATION_COLLECTION,
       action: evt.action,
       source: 'live',
-      labelAction: getOrganizationSnapshot(evt.did) ? 'recompute-queued' : 'profile-saved',
+      labelAction: 'recompute-queued',
       profileIngestMode: getProfileIngestMode(getProfileSnapshot(evt.did)),
     })
-
-    return
-  }
-
-  if (evt.collection !== ORGANIZATION_COLLECTION) {
-    return
-  }
-
-  if (evt.action === 'delete') {
-    await handleOrganizationDelete(evt.did, evt.rkey)
-    return
-  }
-
-  if (!evt.record) {
-    logger.warn(eventMeta, 'Skipping organization event with missing record payload')
-    return
-  }
-
-  // Validate against the app.certified.actor.organization lexicon
-  const parsed = $safeParse(evt.record)
-  if (!parsed.success) {
-    logger.warn({ ...eventMeta, reason: parsed.reason?.message }, 'Organization record failed lexicon validation — skipping')
-    return
-  }
-  const record = parsed.value as ActivityRecord
-  upsertOrganizationSnapshot({
-    did: evt.did,
-    recordUri: `at://${evt.did}/${ORGANIZATION_COLLECTION}/${evt.rkey}`,
-    rkey: evt.rkey,
-    payload: record,
-    updatedAt: new Date().toISOString(),
-  })
-
-  enqueueOrganizationRecompute(evt.did, 'organization-upsert')
-
-  logRecordOutcome({
-    did: evt.did,
-    collection: ORGANIZATION_COLLECTION,
-    action: evt.action,
-    source: 'live',
-    labelAction: 'recompute-queued',
-    profileIngestMode: getProfileIngestMode(getProfileSnapshot(evt.did)),
-  })
   } finally {
     observeTapHandlerDuration(evt.collection, evt.action, performance.now() - startedAt)
   }
@@ -547,6 +560,11 @@ export function startRecomputeWorker(): { destroy: () => void } {
     running = true
 
     try {
+      const recovered = recoverStaleRunningRecomputeJobs(RECOMPUTE_STALE_RUNNING_AFTER_MS)
+      if (recovered > 0) {
+        logger.warn({ recovered }, 'Recovered stale running recompute jobs')
+      }
+
       await processPendingOrganizationDeletes('worker')
 
       let job = claimDueRecomputeJob()
