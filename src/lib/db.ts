@@ -571,17 +571,22 @@ export function claimDueRecomputeJob(now = new Date().toISOString()): RecomputeJ
   return row ? recomputeJobRowToEntry(row) : null
 }
 
-/** Marks a recompute job as done while keeping the row available for queue metrics. */
-export function completeRecomputeJob(id: number): void {
+/**
+ * Marks a claimed recompute job as done while keeping the row available for metrics.
+ * The status guard preserves a newer pending enqueue that arrived while this job was running.
+ */
+export function completeRecomputeJob(id: number): number {
   const db = getDb()
-  db.prepare(`
+  const result = db.prepare(`
     UPDATE recompute_jobs
     SET status = 'done',
         attempts = 0,
         last_error = NULL,
         updated_at = datetime('now')
-    WHERE id = ?
+    WHERE id = ? AND status = 'running'
   `).run(id)
+
+  return result.changes
 }
 
 /**
@@ -617,7 +622,7 @@ export function failRecomputeJob(
         run_after = @runAfter,
         last_error = @errorMessage,
         updated_at = datetime('now')
-    WHERE id = @id
+    WHERE id = @id AND status = 'running'
   `).run({ id, status, runAfter, errorMessage })
 }
 

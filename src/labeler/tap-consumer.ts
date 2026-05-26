@@ -299,18 +299,23 @@ export async function reconcileStoredOrganizationSnapshots(): Promise<number> {
   const snapshots = getAllOrganizationSnapshots()
 
   for (const snapshot of snapshots) {
-    const outcome = await recomputeLabeledOrganizationRow(snapshot.did)
-    if (outcome) {
-      logRecordOutcome({
-        did: snapshot.did,
-        collection: ORGANIZATION_COLLECTION,
-        action: 'reconcile',
-        source: 'startup',
-        score: outcome.score,
-        tier: outcome.tier,
-        labelAction: outcome.labelAction,
-        profileIngestMode: outcome.profileIngestMode,
-      })
+    try {
+      const outcome = await recomputeLabeledOrganizationRow(snapshot.did)
+      if (outcome) {
+        logRecordOutcome({
+          did: snapshot.did,
+          collection: ORGANIZATION_COLLECTION,
+          action: 'reconcile',
+          source: 'startup',
+          score: outcome.score,
+          tier: outcome.tier,
+          labelAction: outcome.labelAction,
+          profileIngestMode: outcome.profileIngestMode,
+        })
+      }
+    } catch (err) {
+      logger.error({ err, did: snapshot.did, rkey: snapshot.rkey }, 'Startup reconciliation failed; queued durable recompute retry')
+      enqueueOrganizationRecompute(snapshot.did, 'startup-reconcile-failed')
     }
   }
 
@@ -464,6 +469,7 @@ indexer.record(async (evt) => {
       return
     }
     const record = parsed.value as ActivityRecord
+    deletePendingOrganizationDelete(evt.did)
     upsertOrganizationSnapshot({
       did: evt.did,
       recordUri: `at://${evt.did}/${ORGANIZATION_COLLECTION}/${evt.rkey}`,

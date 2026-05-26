@@ -38,6 +38,13 @@ type UrlCheckOutcome =
   | { kind: 'hard-failure'; statusCode: number | null; error: string }
   | { kind: 'temporary-failure'; statusCode: number | null; error: string }
 
+class PermanentUrlFailure extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'PermanentUrlFailure'
+  }
+}
+
 function retryDelayForAttempt(attempts: number): number {
   const exponent = Math.max(0, attempts - 1)
   return Math.min(URL_CHECK_MAX_RETRY_MS, URL_CHECK_RETRY_BASE_MS * (2 ** exponent))
@@ -149,12 +156,12 @@ async function assertPublicResolvedHost(normalizedUrl: string): Promise<void> {
 
   const addresses = await lookupHostAddresses(hostname)
   if (addresses.length === 0) {
-    throw new Error(`DNS lookup returned no addresses for ${hostname}`)
+    throw new PermanentUrlFailure(`DNS lookup returned no addresses for ${hostname}`)
   }
 
   const privateAddress = addresses.find(address => !isPublicNetworkAddress(address.address))
   if (privateAddress) {
-    throw new Error(`URL host resolved to non-public address ${privateAddress.address}`)
+    throw new PermanentUrlFailure(`URL host resolved to non-public address ${privateAddress.address}`)
   }
 }
 
@@ -193,13 +200,20 @@ async function fetchUrl(url: string, method: 'HEAD' | 'GET', signal: AbortSignal
     await response.body?.cancel()
 
     if (!nextUrl) {
-      throw new Error(`Unsafe or missing redirect target from ${currentUrl}`)
+      throw new PermanentUrlFailure(`Unsafe or missing redirect target from ${currentUrl}`)
     }
 
     currentUrl = nextUrl
   }
 
-  throw new Error(`Too many redirects from ${url}`)
+  throw new PermanentUrlFailure(`Too many redirects from ${url}`)
+}
+
+function isPermanentDnsFailure(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+
+  const code = 'code' in err ? err.code : undefined
+  return code === 'ENOTFOUND' || code === 'ENODATA' || code === 'EINVAL'
 }
 
 async function resolveUrl(normalizedUrl: string): Promise<UrlCheckOutcome> {
@@ -241,7 +255,7 @@ async function resolveUrl(normalizedUrl: string): Promise<UrlCheckOutcome> {
         : String(err)
 
     return {
-      kind: 'temporary-failure',
+      kind: err instanceof PermanentUrlFailure || isPermanentDnsFailure(err) ? 'hard-failure' : 'temporary-failure',
       statusCode: null,
       error: message,
     }
