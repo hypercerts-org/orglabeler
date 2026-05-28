@@ -465,6 +465,38 @@ export function deleteOrganizationRecordState(did: string, rkey: string): void {
   db.prepare('DELETE FROM activities WHERE did = ? AND rkey = ?').run(did, rkey)
 }
 
+/**
+ * Completes a queued organization delete without deleting a newer replacement snapshot.
+ * Returns false when the pending delete was already cleared or superseded by a newer upsert.
+ */
+export function completePendingOrganizationDelete(did: string, rkey: string, recordUri: string): boolean {
+  const db = getDb()
+
+  return db.transaction(() => {
+    const pending = db.prepare(`
+      SELECT did, record_uri, rkey
+      FROM pending_organization_deletes
+      WHERE did = ?
+    `).get(did) as Pick<PendingOrganizationDeleteRow, 'did' | 'record_uri' | 'rkey'> | undefined
+
+    if (!pending || pending.rkey !== rkey || pending.record_uri !== recordUri) {
+      return false
+    }
+
+    db.prepare(`
+      DELETE FROM organization_snapshots
+      WHERE did = @did AND rkey = @rkey AND record_uri = @recordUri
+    `).run({ did, rkey, recordUri })
+    db.prepare('DELETE FROM activities WHERE did = ? AND rkey = ?').run(did, rkey)
+    db.prepare(`
+      DELETE FROM pending_organization_deletes
+      WHERE did = @did AND rkey = @rkey AND record_uri = @recordUri
+    `).run({ did, rkey, recordUri })
+
+    return true
+  })()
+}
+
 export function upsertPendingOrganizationDelete(did: string, rkey: string, recordUri: string): void {
   const db = getDb()
   db.prepare(`
@@ -659,13 +691,13 @@ export function upsertPendingUrlCheck(normalizedUrl: string, now = new Date().to
     VALUES
       (@normalizedUrl, 'pending', NULL, NULL, NULL, 0, NULL, NULL, @now, datetime('now'), datetime('now'))
     ON CONFLICT(normalized_url) DO UPDATE SET
-      status = CASE WHEN url_checks.expires_at <= @now THEN 'pending' ELSE url_checks.status END,
-      resolvable = CASE WHEN url_checks.expires_at <= @now THEN NULL ELSE url_checks.resolvable END,
-      status_code = CASE WHEN url_checks.expires_at <= @now THEN NULL ELSE url_checks.status_code END,
-      error = CASE WHEN url_checks.expires_at <= @now THEN NULL ELSE url_checks.error END,
-      attempts = CASE WHEN url_checks.expires_at <= @now THEN 0 ELSE url_checks.attempts END,
-      expires_at = CASE WHEN url_checks.expires_at <= @now THEN @now ELSE url_checks.expires_at END,
-      updated_at = CASE WHEN url_checks.expires_at <= @now THEN datetime('now') ELSE url_checks.updated_at END
+      status = CASE WHEN url_checks.expires_at <= @now AND url_checks.status != 'pending' THEN 'pending' ELSE url_checks.status END,
+      resolvable = CASE WHEN url_checks.expires_at <= @now AND url_checks.status != 'pending' THEN NULL ELSE url_checks.resolvable END,
+      status_code = CASE WHEN url_checks.expires_at <= @now AND url_checks.status != 'pending' THEN NULL ELSE url_checks.status_code END,
+      error = CASE WHEN url_checks.expires_at <= @now AND url_checks.status != 'pending' THEN NULL ELSE url_checks.error END,
+      attempts = CASE WHEN url_checks.expires_at <= @now AND url_checks.status != 'pending' THEN 0 ELSE url_checks.attempts END,
+      expires_at = CASE WHEN url_checks.expires_at <= @now AND url_checks.status != 'pending' THEN @now ELSE url_checks.expires_at END,
+      updated_at = CASE WHEN url_checks.expires_at <= @now AND url_checks.status != 'pending' THEN datetime('now') ELSE url_checks.updated_at END
   `).run({ normalizedUrl, now })
 }
 

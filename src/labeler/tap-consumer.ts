@@ -18,6 +18,7 @@ import {
   getAllOrganizationSnapshots,
   deleteProfileSnapshot,
   deleteOrganizationRecordState,
+  completePendingOrganizationDelete,
   deletePendingOrganizationDelete,
   clearActivityHfFields,
   getPendingOrganizationDeletes,
@@ -266,8 +267,20 @@ async function processPendingOrganizationDeletes(source: 'startup' | 'worker'): 
         'Retrying pending organization label negation before cleanup',
       )
       const negatedCount = await negateQualityLabels(pendingDelete.record_uri)
-      deleteOrganizationRecordState(pendingDelete.did, pendingDelete.rkey)
-      deletePendingOrganizationDelete(pendingDelete.did)
+      const completed = completePendingOrganizationDelete(
+        pendingDelete.did,
+        pendingDelete.rkey,
+        pendingDelete.record_uri,
+      )
+
+      if (!completed) {
+        logger.info(
+          { did: pendingDelete.did, rkey: pendingDelete.rkey, uri: pendingDelete.record_uri, source },
+          'Pending organization delete was already superseded; skipped local cleanup',
+        )
+        continue
+      }
+
       processed++
 
       logRecordOutcome({
