@@ -1,4 +1,5 @@
 import { isIP } from 'node:net'
+import { PLACEHOLDER_DOMAINS, PLACEHOLDER_TLDS } from './constants'
 
 const COMMON_2ND_LEVEL_SUFFIXES = new Set([
   'ac',
@@ -82,6 +83,17 @@ function isPrivateIpv6(hostname: string): boolean {
   )
 }
 
+/** Returns true when a literal IP address is globally routable enough for URL enrichment fetches. */
+export function isPublicNetworkAddress(address: string): boolean {
+  const normalized = address.replace(/^\[(.*)\]$/, '$1').toLowerCase()
+  const ipVersion = isIP(normalized)
+
+  if (ipVersion === 4) return !isPrivateIpv4(normalized)
+  if (ipVersion === 6) return !isPrivateIpv6(normalized)
+
+  return false
+}
+
 function isPublicHostname(hostname: string): boolean {
   const normalized = normalizeHostname(hostname)
 
@@ -90,8 +102,7 @@ function isPublicHostname(hostname: string): boolean {
   }
 
   const ipVersion = isIP(normalized)
-  if (ipVersion === 4) return !isPrivateIpv4(normalized)
-  if (ipVersion === 6) return !isPrivateIpv6(normalized)
+  if (ipVersion === 4 || ipVersion === 6) return isPublicNetworkAddress(normalized)
 
   if (normalized.startsWith('.') || normalized.endsWith('.') || normalized.includes('..')) return false
   if (/^[0-9.]+$/.test(normalized)) return false
@@ -155,6 +166,26 @@ export function normalizePublicWebsiteUrl(value: string | null | undefined): str
   }
 
   return parsed.toString()
+}
+
+function isPlaceholderHostname(hostname: string): boolean {
+  const normalized = normalizeHostname(hostname)
+  const labels = normalized.split('.').filter(Boolean)
+  const tld = labels.at(-1)
+
+  if (PLACEHOLDER_DOMAINS.some(domain => normalized === domain || normalized.endsWith(`.${domain}`))) {
+    return true
+  }
+
+  return Boolean(tld && PLACEHOLDER_TLDS.includes(tld as typeof PLACEHOLDER_TLDS[number]))
+}
+
+/** Returns true when a syntactically valid public URL points at a reserved placeholder host. */
+export function isPlaceholderWebsiteUrl(value: string | null | undefined): boolean {
+  const normalizedUrl = normalizePublicWebsiteUrl(value)
+  if (!normalizedUrl) return false
+
+  return isPlaceholderHostname(new URL(normalizedUrl).hostname)
 }
 
 export function getWebsiteDomainStem(value: string | null | undefined): string | null {

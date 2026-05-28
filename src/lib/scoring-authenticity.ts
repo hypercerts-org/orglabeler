@@ -1,6 +1,6 @@
 import type { MergedScoringInput } from './scoring-input'
-import { AUTHENTICITY_TEXT_PATTERNS } from './constants'
-import { normalizePublicWebsiteUrl } from './website-utils'
+import { AUTHENTICITY_TEXT_PATTERNS, DISPLAY_NAME_AUTHENTICITY_TEXT_PATTERNS } from './constants'
+import { isPlaceholderWebsiteUrl, normalizePublicWebsiteUrl } from './website-utils'
 
 export interface AuthenticityGateResult {
   passed: boolean
@@ -11,23 +11,39 @@ function normalizeText(value: unknown): string {
   return typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : ''
 }
 
-function hasMeaningfulText(value: unknown): boolean {
+function hasMeaningfulText(value: unknown, patterns: RegExp[] = AUTHENTICITY_TEXT_PATTERNS): boolean {
   const normalized = normalizeText(value)
-  return normalized.length > 0 && !AUTHENTICITY_TEXT_PATTERNS.some(pattern => pattern.test(normalized))
+  return normalized.length > 0 && !patterns.some(pattern => pattern.test(normalized))
+}
+
+function hasRepeatedCharacterRun(value: string): boolean {
+  return /([\p{Letter}\p{Number}])\1{3,}/iu.test(value)
 }
 
 function pushSignal(signals: string[], signal: string): void {
   if (!signals.includes(signal)) signals.push(signal)
 }
 
-function validateWebsite(value: string | null | undefined, signal: string, signals: string[]): boolean {
+function validateWebsite(
+  value: string | null | undefined,
+  invalidUrlSignal: string,
+  placeholderDomainSignal: string,
+  signals: string[],
+): boolean {
   const normalized = normalizeText(value)
   if (!normalized) return false
 
-  if (normalizePublicWebsiteUrl(normalized)) return true
+  if (!normalizePublicWebsiteUrl(normalized)) {
+    pushSignal(signals, invalidUrlSignal)
+    return false
+  }
 
-  pushSignal(signals, signal)
-  return false
+  if (isPlaceholderWebsiteUrl(normalized)) {
+    pushSignal(signals, placeholderDomainSignal)
+    return false
+  }
+
+  return true
 }
 
 function validateFoundedDate(value: string | null | undefined, signals: string[]): boolean {
@@ -54,6 +70,7 @@ function validateOrganizationUrls(
 ): { hasMeaningfulMetadata: boolean } {
   let hasMeaningfulMetadata = false
   let hasInvalidUrl = false
+  let hasPlaceholderDomain = false
   let hasPlaceholderLabel = false
 
   for (const item of urls ?? []) {
@@ -61,10 +78,12 @@ function validateOrganizationUrls(
     const label = normalizeText(item.label)
 
     if (url) {
-      if (normalizePublicWebsiteUrl(url)) {
-        hasMeaningfulMetadata = true
-      } else {
+      if (!normalizePublicWebsiteUrl(url)) {
         hasInvalidUrl = true
+      } else if (isPlaceholderWebsiteUrl(url)) {
+        hasPlaceholderDomain = true
+      } else {
+        hasMeaningfulMetadata = true
       }
     }
 
@@ -81,6 +100,10 @@ function validateOrganizationUrls(
     pushSignal(signals, 'Organization URL must be a public http(s) URL')
   }
 
+  if (hasPlaceholderDomain) {
+    pushSignal(signals, 'Organization URLs use placeholder domains')
+  }
+
   if (hasPlaceholderLabel) {
     pushSignal(signals, 'Organization URL labels contain placeholder text')
   }
@@ -92,8 +115,13 @@ export function evaluateMergedActorAuthenticity(record: MergedScoringInput): Aut
   const signals: string[] = []
 
   const canonicalDisplayName = normalizeText(record.displayName)
-  if (canonicalDisplayName && !hasMeaningfulText(canonicalDisplayName)) {
+  const hasProfileDisplayName = record.displayNameSource !== 'did'
+  if (hasProfileDisplayName && canonicalDisplayName && !hasMeaningfulText(canonicalDisplayName, DISPLAY_NAME_AUTHENTICITY_TEXT_PATTERNS)) {
     pushSignal(signals, 'Display name contains placeholder text')
+  }
+
+  if (hasProfileDisplayName && canonicalDisplayName && hasRepeatedCharacterRun(canonicalDisplayName)) {
+    pushSignal(signals, 'Display name contains repeated characters')
   }
 
   const profileDescription = normalizeText(record.profileDescription)
@@ -109,14 +137,15 @@ export function evaluateMergedActorAuthenticity(record: MergedScoringInput): Aut
   const profileWebsite = validateWebsite(
     record.profileWebsite,
     'Profile website must be a public http(s) URL',
+    'Profile website uses placeholder domain',
     signals,
   )
 
   const organizationUrls = validateOrganizationUrls(record.urls, signals)
   const foundedDate = validateFoundedDate(record.foundedDate, signals)
 
-  const displayNameIsMeaningful = record.displayNameSource !== 'did' && hasMeaningfulText(canonicalDisplayName)
-  const organizationTypeIsMeaningful = organizationTypeValues.some(hasMeaningfulText)
+  const displayNameIsMeaningful = hasProfileDisplayName && hasMeaningfulText(canonicalDisplayName, DISPLAY_NAME_AUTHENTICITY_TEXT_PATTERNS)
+  const organizationTypeIsMeaningful = organizationTypeValues.some(value => hasMeaningfulText(value))
 
   const hasMeaningfulMetadata =
     displayNameIsMeaningful ||

@@ -37,6 +37,7 @@ Required:
 | `SIGNING_KEY` | Labeler private key |
 | `NEXT_PUBLIC_LABELER_ENDPOINT` | Public HTTPS URL of the app service |
 | `TAP_URL` | Required URL of the separate Tap service; no localhost default |
+| `TAP_ADMIN_PASSWORD` | App-side Tap admin password; required when the Tap service enables admin auth |
 
 Usually needed for setup/sync:
 
@@ -57,10 +58,15 @@ Optional:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `HF_TOKEN` | Enables HuggingFace scoring | _(empty)_ |
-| `HOST` | Labeler bind host | `0.0.0.0` |
-| `LABELER_PORT` | Labeler HTTP port | `4100` |
+| `NEXT_PORT` | Internal Next.js port behind Caddy | `3000` |
+| `HOST` | Labeler bind host | `127.0.0.1` |
+| `LABELER_PORT` | Internal labeler HTTP port behind Caddy | `4100` |
 | `METRICS_PORT` | Metrics port | `4101` |
 | `RESET_DB` | Clear app DB files on startup | _(empty)_ |
+| `URL_ENRICHMENT_ENABLED` | Enable detachable async URL checks through `url_checks` | `true` |
+| `URL_CHECK_TIMEOUT_MS` | Timeout for one URL resolution attempt | `4000` |
+| `URL_CHECK_INTERVAL_MS` | URL worker polling interval | `1000` |
+| `URL_CHECK_MAX_URLS_PER_DID` | Maximum profile/organization URLs cached and checked per DID | `5` |
 
 Start the app with:
 
@@ -92,8 +98,9 @@ Do not point Tap at a custom database path unless the service itself exposes tha
 
 | Port | Service | Notes |
 |------|---------|-------|
-| `$PORT` | App service | Railway routes web traffic here |
-| `4100` | App service | Public labeler endpoint |
+| `$PORT` | App service | Caddy listens here and routes traffic |
+| `3000` | App service | Internal Next.js dashboard behind Caddy |
+| `4100` | App service | Internal labeler endpoint behind Caddy |
 | `4101` | App service | Internal metrics only |
 | `2480` | Tap service | Tap HTTP endpoint |
 
@@ -107,7 +114,7 @@ The app service must be able to reach `TAP_URL`; the Tap service does not need t
 2. Set the app service `TAP_URL` to the Tap service URL.
 3. Set the app service database paths to the mounted app volume.
 4. Run `npm run setup` locally once to create the labeler credentials if needed.
-5. Deploy the app service.
+5. Deploy the app service. Caddy will route `/xrpc/com.atproto.label.queryLabels` and `/xrpc/com.atproto.label.subscribeLabels` directly to the labeler, and all dashboard/API routes to Next.js.
 
 ---
 
@@ -127,7 +134,8 @@ The app service must be able to reach `TAP_URL`; the Tap service does not need t
 ### App service health check fails
 
 - Check `DID`, `SIGNING_KEY`, and `NEXT_PUBLIC_LABELER_ENDPOINT`
-- Check the app logs for the labeler process error
+- Check that Caddy is listening on `$PORT`
+- Check the app logs for Next.js or labeler process errors
 
 ### Emergency reset
 

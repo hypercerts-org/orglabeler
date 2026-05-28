@@ -8,9 +8,11 @@ import {
   backfillHfClassification,
   syncLabelsWithDb,
   reconcileStoredOrganizationSnapshots,
+  startRecomputeWorker,
 } from './tap-consumer'
 import { setReclassifyCallback } from '../lib/hf-classifier'
 import { startMetricsServer } from './metrics'
+import { startUrlEnrichmentWorker } from './url-enrichment-worker'
 import logger from './logger'
 
 // Fix 3 & 4: module-scope shuttingDown flag used by shutdown
@@ -24,15 +26,26 @@ async function waitForTap(url: string, maxAttempts = 30, intervalMs = 1000): Pro
         : undefined
       const res = await fetch(`${url}/health`, authHeader ? { headers: authHeader } : undefined)
       if (TAP_ADMIN_PASSWORD) {
+        if (res.status === 401 || res.status === 403) {
+          throw new Error('Tap rejected TAP_ADMIN_PASSWORD; check that the app and Tap service use the same admin password')
+        }
         if (res.ok) {
           logger.info({ status: res.status }, 'Tap is healthy')
           return
         }
-      } else if (res.status < 500) {
-        logger.info({ status: res.status }, 'Tap is healthy')
-        return
+      } else {
+        if (res.status === 401 || res.status === 403) {
+          throw new Error('Tap requires admin auth. Set TAP_ADMIN_PASSWORD on the app service to match the Tap service.')
+        }
+        if (res.status < 500) {
+          logger.info({ status: res.status }, 'Tap is healthy')
+          return
+        }
       }
-    } catch {
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('TAP_ADMIN_PASSWORD')) {
+        throw err
+      }
       // tap not ready yet — connection refused or similar
     }
     await new Promise(r => setTimeout(r, intervalMs))
@@ -44,12 +57,16 @@ async function main() {
   // Fix 4: declare consumer at outer scope so shutdown can access it
   // even if a signal arrives during startup
   let consumer: Awaited<ReturnType<typeof startTapConsumer>> | undefined
+  let recomputeWorker: ReturnType<typeof startRecomputeWorker> | undefined
+  let urlEnrichmentWorker: ReturnType<typeof startUrlEnrichmentWorker> | undefined
 
   // Fix 4: register shutdown handlers EARLY, before any async work
   async function shutdown(signal: string) {
     if (shuttingDown) return
     shuttingDown = true
     logger.info({ signal }, 'Shutting down...')
+    urlEnrichmentWorker?.destroy()
+    recomputeWorker?.destroy()
     await consumer?.destroy()
     await new Promise<void>((resolve) => {
       labelerServer.close(() => resolve())
@@ -123,7 +140,11 @@ async function main() {
   // 10. Wait for tap to be ready
   await waitForTap(TAP_URL)
 
-  // 11. Start tap consumer (replaces Jetstream subscription)
+  // 11. Start async workers before Tap so persisted jobs can drain.
+  recomputeWorker = startRecomputeWorker()
+  urlEnrichmentWorker = startUrlEnrichmentWorker()
+
+  // 12. Start tap consumer (replaces Jetstream subscription)
   consumer = startTapConsumer()
   logger.info('Tap consumer started — receiving backfill + live events')
   backfillHfClassification()

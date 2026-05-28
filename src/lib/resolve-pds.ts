@@ -1,30 +1,67 @@
+interface DidDocument {
+  service?: Array<{ id: string; type?: string; serviceEndpoint?: unknown }>
+}
+
+function extractPdsEndpoint(did: string, didDoc: DidDocument): string {
+  const pdsService = didDoc.service?.find(
+    service => service.id === '#atproto_pds' || service.id.endsWith('#atproto_pds')
+  )
+
+  if (typeof pdsService?.serviceEndpoint !== 'string') {
+    throw new Error(`No #atproto_pds service found in DID document for ${did}`)
+  }
+
+  return pdsService.serviceEndpoint
+}
+
+function didWebDocumentUrl(did: string): string {
+  const methodSpecificId = did.slice('did:web:'.length)
+  const parts = methodSpecificId.split(':').map(part => decodeURIComponent(part))
+  const host = parts[0]
+  if (!host) throw new Error(`Invalid did:web identifier: ${did}`)
+
+  if (parts.length === 1) {
+    return `https://${host}/.well-known/did.json`
+  }
+
+  return `https://${host}/${parts.slice(1).join('/')}/did.json`
+}
+
+async function fetchDidDocument(did: string): Promise<DidDocument> {
+  let url: string
+  if (did.startsWith('did:plc:')) {
+    url = `https://plc.directory/${did}`
+  } else if (did.startsWith('did:web:')) {
+    url = didWebDocumentUrl(did)
+  } else {
+    throw new Error(`Unsupported DID method for PDS resolution: ${did}`)
+  }
+
+  const res = await fetch(url)
+  if (!res.ok) {
+    throw new Error(`Failed to fetch DID document for ${did}: HTTP ${res.status}`)
+  }
+
+  return (await res.json()) as DidDocument
+}
+
+/** Resolves the actor PDS endpoint from a DID document. */
+export async function resolvePdsForDid(did: string): Promise<{ did: string; pds: string }> {
+  const didDoc = await fetchDidDocument(did)
+  return { did, pds: extractPdsEndpoint(did, didDoc) }
+}
+
 /**
  * Resolve the PDS endpoint for a handle.
- * Steps: handle → DID → PLC directory → extract #atproto_pds serviceEndpoint
+ * Steps: handle → DID → DID document → extract #atproto_pds serviceEndpoint.
  */
 export async function resolvePds(handle: string): Promise<{ did: string; pds: string }> {
-  // Step 1: Resolve handle to DID
   const handleRes = await fetch(
     `https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle=${encodeURIComponent(handle)}`
   )
   if (!handleRes.ok) throw new Error(`Failed to resolve handle: HTTP ${handleRes.status}`)
   const { did } = (await handleRes.json()) as { did: string }
-  if (!did) throw new Error("No DID returned for handle")
+  if (!did) throw new Error('No DID returned for handle')
 
-  // Step 2: Look up DID document from PLC directory
-  const plcRes = await fetch(`https://plc.directory/${did}`)
-  if (!plcRes.ok) throw new Error(`Failed to fetch DID document: HTTP ${plcRes.status}`)
-  const didDoc = (await plcRes.json()) as {
-    service?: Array<{ id: string; type: string; serviceEndpoint: string }>
-  }
-
-  // Step 3: Extract PDS endpoint
-  const pdsService = didDoc.service?.find(
-    (s) => s.id === "#atproto_pds" || s.id.endsWith("#atproto_pds")
-  )
-  if (!pdsService?.serviceEndpoint) {
-    throw new Error(`No #atproto_pds service found in DID document for ${did}`)
-  }
-
-  return { did, pds: pdsService.serviceEndpoint }
+  return resolvePdsForDid(did)
 }

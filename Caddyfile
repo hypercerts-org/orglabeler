@@ -1,0 +1,40 @@
+{
+  auto_https off
+  admin off
+}
+
+:{$PORT:8080} {
+  encode zstd gzip
+
+  @xrpcPreflight {
+    path /xrpc/*
+    method OPTIONS
+  }
+
+  handle @xrpcPreflight {
+    header Access-Control-Allow-Origin "*"
+    header Access-Control-Allow-Headers "authorization, content-type"
+    header Access-Control-Allow-Methods "GET, POST, OPTIONS"
+    header Access-Control-Max-Age "86400"
+    respond "" 204
+  }
+
+  @publicLabelerXrpc {
+    path /xrpc/_health /xrpc/com.atproto.label.queryLabels /xrpc/com.atproto.label.subscribeLabels
+  }
+
+  handle @publicLabelerXrpc {
+    header {
+      Access-Control-Allow-Origin "*"
+      Cache-Control "no-store"
+    }
+
+    reverse_proxy 127.0.0.1:{$LABELER_PORT:4100} {
+      flush_interval -1
+    }
+  }
+
+  handle {
+    reverse_proxy 127.0.0.1:{$NEXT_PORT:3000}
+  }
+}

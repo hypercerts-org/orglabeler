@@ -43,12 +43,15 @@ The setup script will:
 ### Run
 
 ```bash
-# Start the app service (dashboard + labeler)
+# Start the app service locally (dashboard + labeler, without Caddy)
 npm run dev:service
 
 # Or start separately:
 npm run dev            # Dashboard on http://localhost:3000
 npm run labeler        # Labeler backend on port 4100 + metrics on 4101
+
+# Production start runs Caddy + Next + labeler
+npm run start:service   # Caddy on $PORT, Next on NEXT_PORT, labeler on LABELER_PORT
 ```
 
 Tap runs as a separate service. Point `TAP_URL` at that service's URL; there is no localhost fallback and the app will not start without it.
@@ -87,7 +90,13 @@ Scores `app.certified.actor.organization` records on 13 completeness signals (10
 | Avatar | 10 | Has an avatar image |
 | Banner | 10 | Has a banner image |
 
-Test detection: regex patterns catch common placeholder strings (`test`, `asdf`, `lorem ipsum`, etc.) and override the score to force ⚠ Likely Test.
+Test detection: authenticity checks catch common placeholder strings (`test`, `asdf`, `lorem ipsum`, etc.) and override the score to force ⚠ Likely Test. Operators can also set `TEST_PDS_HOSTS` to force actors from known development PDS hosts into ⚠ Likely Test. Actor PDS lookup runs through the durable recompute queue; the first record from an uncached actor may be labeled by content score first, then corrected once the actor DID document is resolved.
+
+### URL enrichment
+
+Tap handlers never fetch URLs. New records are scored immediately with optimistic provisional URL resolve points for valid-looking public URLs. A detachable in-process URL enrichment worker checks those URLs later, stores results in the independent `url_checks` cache table, and queues a recompute only when cached URL state changes.
+
+When `TEST_PDS_HOSTS` is configured, URL enrichment is PDS-aware: it defers URL checks until the actor PDS cache is fresh, skips actors on configured test PDS hosts, and only checks URLs for actors on non-test PDS hosts. Set `URL_ENRICHMENT_ENABLED=false` to disable URL checks completely. When disabled, scoring keeps the provisional URL behavior and does not depend on the `url_checks` table.
 
 ## Scripts
 
@@ -96,7 +105,7 @@ Test detection: regex patterns catch common placeholder strings (`test`, `asdf`,
 | `npm run dev` | Start Next.js dashboard |
 | `npm run labeler` | Start labeler backend |
 | `npm run dev:service` | Start dashboard + labeler concurrently |
-| `npm run start:service` | Start the production app service processes |
+| `npm run start:service` | Start Caddy reverse proxy + production dashboard + labeler process |
 | `npm run setup` | Initialize labeler account |
 | `npm run set-labels` | Push/update label definitions |
 | `npm run build` | Production build |
@@ -112,31 +121,35 @@ Test detection: regex patterns catch common placeholder strings (`test`, `asdf`,
 | `BSKY_PASSWORD` | (set by setup) | Account password or app password |
 | `PDS_URL` | (auto-detected) | PDS endpoint URL |
 | `NEXT_PUBLIC_LABELER_ENDPOINT` | https://labeler.<handle> | Public HTTPS URL for the labeler |
-| `HOST` | 127.0.0.1 | Labeler server bind address |
-| `LABELER_PORT` | 4100 | Labeler server port |
+| `PORT` | 8080 | Public HTTP port listened to by Caddy; hosted platforms usually set this |
+| `NEXT_PORT` | 3000 | Internal Next.js port behind Caddy |
+| `HOST` | 127.0.0.1 | Labeler server bind address; keep local when Caddy is in the same container |
+| `LABELER_PORT` | 4100 | Internal labeler server port behind Caddy |
 | `METRICS_PORT` | 4101 | Prometheus metrics port |
 | `TAP_URL` | required | URL of the separate Tap service (no localhost default) |
+| `TAP_ADMIN_PASSWORD` | empty | App-side password for Tap admin auth; must match the Tap service when auth is enabled |
+| `TEST_PDS_HOSTS` | empty | Comma-separated PDS hosts whose actors should always be labeled `likely-test`; when set, URL enrichment waits for actor PDS resolution and skips matching test PDS hosts |
 | `ACTIVITY_DB_PATH` | `activity-log.db` | Activity log database path |
+| `URL_ENRICHMENT_ENABLED` | `true` | Enables async URL checks through the detachable `url_checks` cache |
+| `URL_CHECK_TIMEOUT_MS` | `4000` | Timeout for one URL resolution attempt |
+| `URL_CHECK_INTERVAL_MS` | `1000` | Poll interval for the URL enrichment worker |
+| `URL_CHECK_MAX_URLS_PER_DID` | `5` | Maximum profile/organization URLs cached and checked per DID |
 
-Tap-specific settings belong on the Tap service, not the app service. This repo only needs `TAP_URL` here; set `TAP_ADMIN_PASSWORD` on the Tap service if you use Tap admin auth.
+Tap runtime settings belong on the Tap service. If the Tap service sets `TAP_ADMIN_PASSWORD`, set the same value on the app service so health checks and the Tap WebSocket can authenticate.
 
 ## Production Deployment
 
 Deploy the app service and Tap as separate services. The app service runs the dashboard plus labeler backend and connects to Tap over `TAP_URL`; Tap owns its own database, volume, lifecycle, and any Tap-specific auth settings.
 
-The labeler backend (port 4100) must be accessible via HTTPS for AT Protocol clients. Use a reverse proxy:
+The production app uses Caddy as the front door. Caddy routes public AT Protocol XRPC label methods directly to the labeler process and everything else to Next.js:
 
-```nginx
-server {
-    listen 443 ssl;
-    server_name labeler.yourdomain.com;
-    
-    location / {
-        proxy_pass http://127.0.0.1:4100;
-        proxy_set_header Host $host;
-    }
-}
+```txt
+/xrpc/com.atproto.label.queryLabels     -> 127.0.0.1:4100
+/xrpc/com.atproto.label.subscribeLabels -> 127.0.0.1:4100
+/*                                      -> 127.0.0.1:3000
 ```
+
+This is important because `subscribeLabels` uses WebSockets, which need a real reverse proxy rather than the Next.js `fetch()` proxy fallback.
 
 ## Tech Stack
 

@@ -91,9 +91,9 @@ const API_ENDPOINTS = [
   },
   {
     method: 'GET',
-    path: '/xrpc/com.atproto.label.queryLabels?uriPatterns=at://did:plc:*/app.certified.actor.organization/*',
-    description: 'Query AT Protocol labels via the standard labeler endpoint. Use uriPatterns to filter record URIs and sources to scope the label source.',
-    curl: `curl "${labelerUrl('/xrpc/com.atproto.label.queryLabels?uriPatterns=at://did:plc:*/app.certified.actor.organization/*')}"`,
+    path: '/xrpc/com.atproto.label.queryLabels?uriPatterns=*',
+    description: 'Query AT Protocol labels via the standard labeler endpoint. Use uriPatterns with a full URI, a trailing-prefix wildcard, or * for all labels; sources scopes the label source.',
+    curl: `curl "${labelerUrl('/xrpc/com.atproto.label.queryLabels?uriPatterns=*')}"`,
   },
 ]
 
@@ -237,7 +237,9 @@ export default function DocsPage() {
           <ul className='space-y-1 pl-3'>
             <li>• Common junk values: <span className='font-mono bg-secondary rounded px-1'>test</span>, <span className='font-mono bg-secondary rounded px-1'>asdf</span>, <span className='font-mono bg-secondary rounded px-1'>lorem ipsum</span>, <span className='font-mono bg-secondary rounded px-1'>placeholder</span>, <span className='font-mono bg-secondary rounded px-1'>delete me</span>, <span className='font-mono bg-secondary rounded px-1'>ignore</span>, <span className='font-mono bg-secondary rounded px-1'>todo</span>, <span className='font-mono bg-secondary rounded px-1'>foo</span>, <span className='font-mono bg-secondary rounded px-1'>bar</span>, <span className='font-mono bg-secondary rounded px-1'>abc</span>, <span className='font-mono bg-secondary rounded px-1'>wip</span>, <span className='font-mono bg-secondary rounded px-1'>sample</span>, and <span className='font-mono bg-secondary rounded px-1'>example</span>.</li>
             <li>• Empty-style values: <span className='font-mono bg-secondary rounded px-1'>n/a</span>, <span className='font-mono bg-secondary rounded px-1'>none</span>, <span className='font-mono bg-secondary rounded px-1'>null</span>, <span className='font-mono bg-secondary rounded px-1'>undefined</span>, <span className='font-mono bg-secondary rounded px-1'>blank</span>, <span className='font-mono bg-secondary rounded px-1'>draft</span>, <span className='font-mono bg-secondary rounded px-1'>temp</span>, and <span className='font-mono bg-secondary rounded px-1'>tmp</span>.</li>
-            <li>• Single-word greetings, repeated characters, and numeric-only values are also treated as test data.</li>
+            <li>• Display-name workflow/test terms such as <span className='font-mono bg-secondary rounded px-1'>demo</span>, <span className='font-mono bg-secondary rounded px-1'>dev</span>, <span className='font-mono bg-secondary rounded px-1'>staging</span>, <span className='font-mono bg-secondary rounded px-1'>qa</span>, <span className='font-mono bg-secondary rounded px-1'>e2e</span>, <span className='font-mono bg-secondary rounded px-1'>sandbox</span>, <span className='font-mono bg-secondary rounded px-1'>fixture</span>, <span className='font-mono bg-secondary rounded px-1'>seed data</span>, obvious glued test fixtures like <span className='font-mono bg-secondary rounded px-1'>tobytest</span>, generic names like <span className='font-mono bg-secondary rounded px-1'>org</span>/<span className='font-mono bg-secondary rounded px-1'>org 1</span>/<span className='font-mono bg-secondary rounded px-1'>first org</span>/<span className='font-mono bg-secondary rounded px-1'>new org</span>, <span className='font-mono bg-secondary rounded px-1'>new db</span>, <span className='font-mono bg-secondary rounded px-1'>published</span>, <span className='font-mono bg-secondary rounded px-1'>unpublished</span>, and <span className='font-mono bg-secondary rounded px-1'>changes requested</span>.</li>
+            <li>• Placeholder domains such as <span className='font-mono bg-secondary rounded px-1'>example.com</span>, <span className='font-mono bg-secondary rounded px-1'>example.org</span>, <span className='font-mono bg-secondary rounded px-1'>example.net</span>, and reserved <span className='font-mono bg-secondary rounded px-1'>.test</span>/<span className='font-mono bg-secondary rounded px-1'>.example</span>/<span className='font-mono bg-secondary rounded px-1'>.invalid</span> hostnames fail URL authenticity checks.</li>
+            <li>• Single-word greetings, repeated characters, repeated-character runs in display names, and numeric-only values are also treated as test data.</li>
           </ul>
         </div>
         <div className='border border-border rounded-lg bg-card p-4 text-xs text-muted-foreground space-y-1'>

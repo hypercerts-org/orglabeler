@@ -62,8 +62,8 @@ export const TEST_PATTERNS: RegExp[] = [
   // Word-boundary "test" — catches "Another Test", "Test Contributors", "This is testing", "test 123"
   /\btest(ing|ed|er|s)?\b/i,
 
-  // Common junk prefixes
-  /^asdf/i, /^lorem ipsum/i, /^placeholder/i, /^delete me/i, /^ignore/i, /^zzz/i,
+  // Common junk prefixes and phrases.
+  /^asdf/i, /\blorem ipsum\b/i, /^placeholder/i, /^delete me/i, /^ignore/i, /^zzz/i,
 
   // Exact match common junk
   /^foo$/i, /^bar$/i, /^abc$/i, /^123$/i, /^wip$/i, /^todo$/i,
@@ -94,6 +94,29 @@ export const AUTHENTICITY_TEXT_PATTERNS: RegExp[] = [
   /^to be determined$/i,
   /^unlisted$/i,
 ]
+
+/**
+ * Extra authenticity patterns for display names, where workflow/test labels are
+ * much stronger evidence than the same words appearing in longer descriptions.
+ */
+export const DISPLAY_NAME_AUTHENTICITY_TEXT_PATTERNS: RegExp[] = [
+  ...AUTHENTICITY_TEXT_PATTERNS,
+  /(?:^|[^\p{Letter}\p{Number}])(?:demo|dev|staging|qa|e2e|sandbox|fixture)(?:$|[^\p{Letter}\p{Number}])/iu,
+  /^tobytest\d*$/i,
+  /^exclusivecgstester\d*$/i,
+  /\b(?:seed data|new db|changes requested)\b/i,
+  /^unpublished(?:\s+org(?:anization)?)?$/i,
+  /^published(?:\s+org(?:anization)?)?$/i,
+  /^org(?:anization)?(?:[\s._-]*\d+)?$/i,
+  /^(?:my\s+)?first\s+org(?:anization)?$/i,
+  /^new[\s._-]+org(?:anization)?$/i,
+]
+
+/** Reserved example domains that should never count as organization evidence. */
+export const PLACEHOLDER_DOMAINS = ['example.com', 'example.net', 'example.org'] as const
+
+/** Reserved non-production TLDs that should fail the authenticity gate. */
+export const PLACEHOLDER_TLDS = ['example', 'invalid', 'test'] as const
 
 export const LABEL_LIMIT = 1
 export const QUALITY_LABEL_IDENTIFIERS: string[] = ['likely-test', 'standard', 'high-quality']

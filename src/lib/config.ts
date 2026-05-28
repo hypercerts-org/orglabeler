@@ -1,3 +1,5 @@
+import { parseTestPdsHosts } from './pds-utils'
+
 export const DID = process.env.DID ?? ''
 export const SIGNING_KEY = process.env.SIGNING_KEY ?? ''
 export const HOST = process.env.HOST ?? '0.0.0.0'
@@ -18,6 +20,37 @@ export const TAP_ADMIN_PASSWORD = process.env.TAP_ADMIN_PASSWORD ?? ''
 export const HF_TOKEN = process.env.HF_TOKEN ?? ''
 export const HF_MODEL = 'facebook/bart-large-mnli'
 export const HYPERSCAN_RECORD_URL_BASE = process.env.HYPERSCAN_RECORD_URL_BASE ?? 'https://hyperscan.dev/data'
+/** Comma-separated PDS hosts whose actors should always be labeled likely-test. */
+export const TEST_PDS_HOSTS = parseTestPdsHosts(process.env.TEST_PDS_HOSTS ?? '')
+
+function integerEnv(name: string, fallback: number): number {
+  const value = process.env[name]
+  if (!value) return fallback
+
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+
+/** Enables the detachable URL enrichment worker; set to false to keep scoring fully provisional. */
+export const URL_ENRICHMENT_ENABLED = process.env.URL_ENRICHMENT_ENABLED !== 'false'
+/** Poll interval for checking one due URL cache row. */
+export const URL_CHECK_INTERVAL_MS = integerEnv('URL_CHECK_INTERVAL_MS', 1000)
+/** How often the URL worker scans local snapshots for newly referenced URLs. */
+export const URL_CHECK_DISCOVERY_INTERVAL_MS = integerEnv('URL_CHECK_DISCOVERY_INTERVAL_MS', 30_000)
+/** Maximum wall-clock time for a single URL resolution attempt. */
+export const URL_CHECK_TIMEOUT_MS = integerEnv('URL_CHECK_TIMEOUT_MS', 4000)
+/** How long a successful URL resolution remains fresh before rechecking. */
+export const URL_CHECK_OK_TTL_MS = integerEnv('URL_CHECK_OK_TTL_MS', 7 * 24 * 60 * 60 * 1000)
+/** How long a hard failed URL remains downgraded before another attempt. */
+export const URL_CHECK_FAILED_TTL_MS = integerEnv('URL_CHECK_FAILED_TTL_MS', 24 * 60 * 60 * 1000)
+/** Initial retry delay for temporary URL failures. */
+export const URL_CHECK_RETRY_BASE_MS = integerEnv('URL_CHECK_RETRY_BASE_MS', 5 * 60 * 1000)
+/** Maximum retry delay for temporary URL failures. */
+export const URL_CHECK_MAX_RETRY_MS = integerEnv('URL_CHECK_MAX_RETRY_MS', 60 * 60 * 1000)
+/** Number of hard failures required before URL scoring removes resolve points. */
+export const URL_CHECK_HARD_FAILURE_ATTEMPTS = integerEnv('URL_CHECK_HARD_FAILURE_ATTEMPTS', 2)
+/** Maximum profile/organization URLs to cache and check per DID. */
+export const URL_CHECK_MAX_URLS_PER_DID = integerEnv('URL_CHECK_MAX_URLS_PER_DID', 5)
 
 export function validateLabelerConfig(): void {
   const required: [string, string][] = [
