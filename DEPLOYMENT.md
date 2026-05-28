@@ -76,6 +76,7 @@ If your Tap deployment uses admin auth, configure `TAP_ADMIN_PASSWORD` on the Ta
 
 - `HF_TOKEN` — enables HuggingFace classification; if unset, HF scoring stays disabled
 - `PDS_URL` — overrides PDS discovery from the DID document
+- `TEST_PDS_HOSTS` — comma-separated PDS hosts whose actors should always be labeled `likely-test`; URL enrichment waits for actor PDS resolution and skips matching test PDS hosts
 - `PORT` — public Caddy HTTP port (hosted platforms usually set this; default fallback `8080`)
 - `NEXT_PORT` — internal Next.js HTTP port (`3000` by default)
 - `HOST` — bind host for the labeler server (`127.0.0.1` is recommended when Caddy runs in the same container)

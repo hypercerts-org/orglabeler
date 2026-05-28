@@ -187,7 +187,8 @@ export async function scoreActivity(record: MergedScoringInput): Promise<ScoreRe
   }
 }
 
-export function tierForScore(score: number, _testSignals: string[] = []): LabelTier {
+export function tierForScore(score: number, testSignals: string[] = []): LabelTier {
+  if (testSignals.length > 0) return 'likely-test'
   if (score >= SCORE_THRESHOLDS['high-quality'].min) return 'high-quality'
   if (score >= SCORE_THRESHOLDS.standard.min) return 'standard'
   return 'likely-test'

@@ -1,3 +1,5 @@
+import { parseTestPdsHosts } from './pds-utils'
+
 export const DID = process.env.DID ?? ''
 export const SIGNING_KEY = process.env.SIGNING_KEY ?? ''
 export const HOST = process.env.HOST ?? '0.0.0.0'
@@ -18,6 +20,8 @@ export const TAP_ADMIN_PASSWORD = process.env.TAP_ADMIN_PASSWORD ?? ''
 export const HF_TOKEN = process.env.HF_TOKEN ?? ''
 export const HF_MODEL = 'facebook/bart-large-mnli'
 export const HYPERSCAN_RECORD_URL_BASE = process.env.HYPERSCAN_RECORD_URL_BASE ?? 'https://hyperscan.dev/data'
+/** Comma-separated PDS hosts whose actors should always be labeled likely-test. */
+export const TEST_PDS_HOSTS = parseTestPdsHosts(process.env.TEST_PDS_HOSTS ?? '')
 
 function integerEnv(name: string, fallback: number): number {
   const value = process.env[name]

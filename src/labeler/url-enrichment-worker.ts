@@ -1,5 +1,6 @@
 import { lookup } from 'node:dns/promises'
 
+import { shouldRunUrlEnrichmentForDid } from '../lib/actor-pds-policy'
 import {
   URL_CHECK_DISCOVERY_INTERVAL_MS,
   URL_CHECK_FAILED_TTL_MS,
@@ -90,6 +91,7 @@ export function collectNormalizedUrlsForDid(did: string): string[] {
  */
 export function enqueueUrlChecksForDid(did: string): number {
   if (!URL_ENRICHMENT_ENABLED) return 0
+  if (!shouldRunUrlEnrichmentForDid(did)) return 0
 
   const urls = collectNormalizedUrlsForDid(did)
   for (const url of urls) {

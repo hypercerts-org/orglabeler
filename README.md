@@ -90,13 +90,13 @@ Scores `app.certified.actor.organization` records on 13 completeness signals (10
 | Avatar | 10 | Has an avatar image |
 | Banner | 10 | Has a banner image |
 
-Test detection: regex patterns catch common placeholder strings (`test`, `asdf`, `lorem ipsum`, etc.) and override the score to force ⚠ Likely Test.
+Test detection: authenticity checks catch common placeholder strings (`test`, `asdf`, `lorem ipsum`, etc.) and override the score to force ⚠ Likely Test. Operators can also set `TEST_PDS_HOSTS` to force actors from known development PDS hosts into ⚠ Likely Test. Actor PDS lookup runs through the durable recompute queue; the first record from an uncached actor may be labeled by content score first, then corrected once the actor DID document is resolved.
 
 ### URL enrichment
 
 Tap handlers never fetch URLs. New records are scored immediately with optimistic provisional URL resolve points for valid-looking public URLs. A detachable in-process URL enrichment worker checks those URLs later, stores results in the independent `url_checks` cache table, and queues a recompute only when cached URL state changes.
 
-Set `URL_ENRICHMENT_ENABLED=false` to disable URL checks completely. When disabled, scoring keeps the provisional URL behavior and does not depend on the `url_checks` table.
+When `TEST_PDS_HOSTS` is configured, URL enrichment is PDS-aware: it defers URL checks until the actor PDS cache is fresh, skips actors on configured test PDS hosts, and only checks URLs for actors on non-test PDS hosts. Set `URL_ENRICHMENT_ENABLED=false` to disable URL checks completely. When disabled, scoring keeps the provisional URL behavior and does not depend on the `url_checks` table.
 
 ## Scripts
 
@@ -128,6 +128,7 @@ Set `URL_ENRICHMENT_ENABLED=false` to disable URL checks completely. When disabl
 | `METRICS_PORT` | 4101 | Prometheus metrics port |
 | `TAP_URL` | required | URL of the separate Tap service (no localhost default) |
 | `TAP_ADMIN_PASSWORD` | empty | App-side password for Tap admin auth; must match the Tap service when auth is enabled |
+| `TEST_PDS_HOSTS` | empty | Comma-separated PDS hosts whose actors should always be labeled `likely-test`; when set, URL enrichment waits for actor PDS resolution and skips matching test PDS hosts |
 | `ACTIVITY_DB_PATH` | `activity-log.db` | Activity log database path |
 | `URL_ENRICHMENT_ENABLED` | `true` | Enables async URL checks through the detachable `url_checks` cache |
 | `URL_CHECK_TIMEOUT_MS` | `4000` | Timeout for one URL resolution attempt |

@@ -1,0 +1,1167 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TEST_PDS Option 2 — Orglabeler Design Doc</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #080807;
+      --ink: #f6f0dd;
+      --muted: #afa98f;
+      --dim: #726f62;
+      --panel: rgba(25, 25, 21, .88);
+      --panel-2: rgba(38, 36, 29, .9);
+      --panel-3: rgba(15, 16, 14, .92);
+      --line: rgba(246, 240, 221, .16);
+      --line-strong: rgba(246, 240, 221, .34);
+      --moss: #9dd98f;
+      --moss-soft: rgba(157, 217, 143, .14);
+      --ochre: #f2b95f;
+      --ochre-soft: rgba(242, 185, 95, .14);
+      --rose: #ff7676;
+      --rose-soft: rgba(255, 118, 118, .14);
+      --cyan: #7ed8d2;
+      --cyan-soft: rgba(126, 216, 210, .13);
+      --violet: #cda2ff;
+      --violet-soft: rgba(205, 162, 255, .13);
+      --shadow: 0 28px 90px rgba(0, 0, 0, .48);
+      --radius: 28px;
+      --mono: "SFMono-Regular", "Cascadia Code", "Liberation Mono", monospace;
+      --serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+      --sans: "Avenir Next", "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      font-family: var(--sans);
+      background:
+        radial-gradient(circle at 7% 10%, rgba(157, 217, 143, .15), transparent 32rem),
+        radial-gradient(circle at 88% 3%, rgba(126, 216, 210, .12), transparent 33rem),
+        radial-gradient(circle at 54% 110%, rgba(242, 185, 95, .13), transparent 38rem),
+        linear-gradient(135deg, #050604, #11100c 45%, #080807);
+      line-height: 1.45;
+      overflow-x: hidden;
+    }
+
+    body::before,
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: -1;
+    }
+
+    body::before {
+      opacity: .09;
+      background-image:
+        linear-gradient(rgba(246,240,221,.16) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(246,240,221,.16) 1px, transparent 1px);
+      background-size: 42px 42px;
+      mask-image: radial-gradient(circle at center, black, transparent 78%);
+    }
+
+    body::after {
+      opacity: .18;
+      background:
+        repeating-linear-gradient(118deg, transparent 0 16px, rgba(246,240,221,.03) 17px 18px),
+        radial-gradient(circle at 20% 20%, rgba(255,255,255,.08), transparent 1px);
+      background-size: auto, 5px 5px;
+      mix-blend-mode: overlay;
+    }
+
+    main {
+      width: min(1420px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 42px 0 76px;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(340px, .8fr);
+      gap: 28px;
+      align-items: end;
+      margin-bottom: 28px;
+    }
+
+    .kicker {
+      margin: 0 0 14px;
+      color: var(--moss);
+      font: 800 12px/1 var(--mono);
+      text-transform: uppercase;
+      letter-spacing: .2em;
+    }
+
+    h1 {
+      margin: 0;
+      font: 800 clamp(46px, 8vw, 112px)/.86 var(--serif);
+      letter-spacing: -.075em;
+      max-width: 900px;
+    }
+
+    h2, h3 { letter-spacing: -.035em; }
+
+    h2 {
+      margin: 0;
+      font: 760 clamp(26px, 3vw, 42px)/.98 var(--serif);
+    }
+
+    h3 {
+      margin: 0 0 8px;
+      font: 760 21px/1.1 var(--serif);
+    }
+
+    p { margin: 0; }
+
+    code {
+      font-family: var(--mono);
+      color: var(--cyan);
+      background: rgba(126, 216, 210, .08);
+      border: 1px solid rgba(126, 216, 210, .18);
+      border-radius: 7px;
+      padding: .08rem .32rem;
+    }
+
+    .hero-card,
+    .panel,
+    .node,
+    .rail-card,
+    .table-wrap {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+
+    .hero-card {
+      border-radius: var(--radius);
+      padding: 24px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero-card::before {
+      content: "";
+      position: absolute;
+      inset: -1px;
+      border-radius: inherit;
+      border: 1px solid rgba(157, 217, 143, .18);
+      mask-image: linear-gradient(140deg, black, transparent 52%);
+      pointer-events: none;
+    }
+
+    .summary {
+      color: var(--muted);
+      font-size: 17px;
+      max-width: 560px;
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 9px;
+      margin-top: 18px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 7px 10px;
+      color: var(--muted);
+      background: rgba(255,255,255,.035);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .chip::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 99px;
+      background: var(--moss);
+      box-shadow: 0 0 18px var(--moss);
+    }
+
+    .chip.warn::before { background: var(--ochre); box-shadow: 0 0 18px var(--ochre); }
+    .chip.hot::before { background: var(--rose); box-shadow: 0 0 18px var(--rose); }
+
+    .hero-meter {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+      margin-top: 18px;
+    }
+
+    .meter-row {
+      display: grid;
+      grid-template-columns: 118px 1fr auto;
+      gap: 12px;
+      align-items: center;
+      color: var(--muted);
+      font: 700 12px/1 var(--mono);
+      text-transform: uppercase;
+      letter-spacing: .12em;
+    }
+
+    .meter {
+      position: relative;
+      height: 10px;
+      border-radius: 99px;
+      overflow: hidden;
+      background: rgba(255,255,255,.08);
+      border: 1px solid rgba(255,255,255,.1);
+    }
+
+    .meter span {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: var(--value);
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--moss), var(--cyan));
+      box-shadow: 0 0 22px rgba(157, 217, 143, .28);
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 340px minmax(0, 1fr);
+      gap: 22px;
+      align-items: start;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 18px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .panel {
+      border-radius: 24px;
+      padding: 18px;
+    }
+
+    .panel-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .eyebrow {
+      color: var(--dim);
+      font: 800 11px/1 var(--mono);
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+
+    .scenario-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    button {
+      font: inherit;
+      color: inherit;
+    }
+
+    .scenario-button,
+    .tab-button {
+      cursor: pointer;
+      text-align: left;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.035);
+      border-radius: 16px;
+      padding: 12px;
+      transition: transform .18s ease, border-color .18s ease, background .18s ease;
+    }
+
+    .scenario-button:hover,
+    .tab-button:hover {
+      transform: translateY(-1px);
+      border-color: var(--line-strong);
+      background: rgba(255,255,255,.055);
+    }
+
+    .scenario-button[aria-pressed="true"],
+    .tab-button[aria-selected="true"] {
+      border-color: rgba(157, 217, 143, .58);
+      background: linear-gradient(135deg, rgba(157, 217, 143, .16), rgba(126, 216, 210, .07));
+      box-shadow: 0 0 0 1px rgba(157, 217, 143, .12) inset;
+    }
+
+    .scenario-name {
+      display: block;
+      font-weight: 800;
+      letter-spacing: -.015em;
+    }
+
+    .scenario-desc {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .switch {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 12px;
+      border: 1px dashed var(--line);
+      border-radius: 17px;
+      padding: 12px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .switch input { display: none; }
+
+    .toggle-track {
+      flex: 0 0 auto;
+      width: 48px;
+      height: 27px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.08);
+      border: 1px solid var(--line);
+      position: relative;
+      cursor: pointer;
+      transition: background .18s ease, border-color .18s ease;
+    }
+
+    .toggle-track::after {
+      content: "";
+      position: absolute;
+      top: 4px;
+      left: 4px;
+      width: 17px;
+      height: 17px;
+      border-radius: 99px;
+      background: var(--muted);
+      transition: transform .18s ease, background .18s ease;
+    }
+
+    .switch input:checked + .toggle-track {
+      background: rgba(157, 217, 143, .16);
+      border-color: rgba(157, 217, 143, .58);
+    }
+
+    .switch input:checked + .toggle-track::after {
+      transform: translateX(20px);
+      background: var(--moss);
+      box-shadow: 0 0 22px rgba(157, 217, 143, .42);
+    }
+
+    .log {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .log-line {
+      display: grid;
+      grid-template-columns: 24px 1fr;
+      gap: 9px;
+      align-items: start;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .log-line strong {
+      color: var(--ink);
+      font-weight: 800;
+    }
+
+    .dot {
+      width: 24px;
+      height: 24px;
+      border-radius: 99px;
+      display: grid;
+      place-items: center;
+      font: 900 11px/1 var(--mono);
+      color: #080807;
+      background: var(--moss);
+    }
+
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .tab-button {
+      color: var(--muted);
+      padding: 10px 13px;
+      border-radius: 999px;
+      font: 800 12px/1 var(--mono);
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; animation: rise .28s ease both; }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: none; }
+    }
+
+    .flow-stage {
+      position: relative;
+      border-radius: 30px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      background:
+        linear-gradient(160deg, rgba(255,255,255,.05), rgba(255,255,255,.015)),
+        rgba(9, 10, 8, .68);
+      padding: 20px;
+      min-height: 620px;
+    }
+
+    .flow-stage::before {
+      content: "";
+      position: absolute;
+      inset: 20px;
+      border: 1px dashed rgba(246, 240, 221, .13);
+      border-radius: 24px;
+      pointer-events: none;
+    }
+
+    .flow-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      position: relative;
+      z-index: 2;
+      margin-bottom: 16px;
+    }
+
+    .route-caption {
+      color: var(--muted);
+      font-size: 14px;
+      max-width: 640px;
+    }
+
+    .diagram {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 16px;
+      align-items: stretch;
+    }
+
+    .node {
+      position: relative;
+      min-height: 142px;
+      border-radius: 22px;
+      padding: 16px;
+      overflow: hidden;
+      background: rgba(24, 25, 20, .78);
+      transition: transform .2s ease, border-color .2s ease, background .2s ease, opacity .2s ease;
+    }
+
+    .node::after {
+      content: "";
+      position: absolute;
+      inset: auto -35px -48px auto;
+      width: 122px;
+      height: 122px;
+      border-radius: 99px;
+      background: var(--node-glow, rgba(157, 217, 143, .16));
+      filter: blur(8px);
+      opacity: .75;
+    }
+
+    .node:hover { transform: translateY(-2px); border-color: var(--line-strong); }
+
+    .node[data-state="active"] {
+      border-color: rgba(157, 217, 143, .62);
+      background: linear-gradient(145deg, rgba(157, 217, 143, .14), rgba(24,25,20,.88));
+      --node-glow: rgba(157, 217, 143, .24);
+    }
+
+    .node[data-state="async"] {
+      border-color: rgba(126, 216, 210, .56);
+      background: linear-gradient(145deg, rgba(126, 216, 210, .12), rgba(24,25,20,.88));
+      --node-glow: rgba(126, 216, 210, .24);
+    }
+
+    .node[data-state="override"] {
+      border-color: rgba(255, 118, 118, .62);
+      background: linear-gradient(145deg, rgba(255, 118, 118, .14), rgba(24,25,20,.9));
+      --node-glow: rgba(255, 118, 118, .24);
+    }
+
+    .node[data-state="muted"] {
+      opacity: .52;
+      filter: grayscale(.25);
+    }
+
+    .node[data-state="pending"] {
+      border-color: rgba(242, 185, 95, .58);
+      background: linear-gradient(145deg, rgba(242, 185, 95, .12), rgba(24,25,20,.88));
+      --node-glow: rgba(242, 185, 95, .23);
+    }
+
+    .node-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: start;
+      margin-bottom: 12px;
+    }
+
+    .node-title strong {
+      font: 820 16px/1.08 var(--serif);
+      letter-spacing: -.02em;
+    }
+
+    .node-num {
+      flex: 0 0 auto;
+      width: 26px;
+      height: 26px;
+      display: grid;
+      place-items: center;
+      border-radius: 99px;
+      color: #080807;
+      background: var(--moss);
+      font: 900 12px/1 var(--mono);
+    }
+
+    .node p {
+      position: relative;
+      z-index: 1;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .node .state {
+      position: relative;
+      z-index: 1;
+      display: inline-flex;
+      margin-top: 14px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 6px 8px;
+      color: var(--muted);
+      background: rgba(0,0,0,.18);
+      font: 800 11px/1 var(--mono);
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+
+    .wide { grid-column: span 2; }
+    .full { grid-column: 1 / -1; }
+
+    .connector-svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      opacity: .62;
+    }
+
+    .connector-svg path {
+      fill: none;
+      stroke: rgba(246, 240, 221, .2);
+      stroke-width: 2;
+      stroke-dasharray: 8 9;
+      animation: dash 20s linear infinite;
+    }
+
+    .connector-svg path.hot { stroke: rgba(255, 118, 118, .48); }
+    .connector-svg path.async { stroke: rgba(126, 216, 210, .46); }
+
+    @keyframes dash { to { stroke-dashoffset: -240; } }
+
+    .split {
+      display: grid;
+      grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
+      gap: 16px;
+    }
+
+    .rail {
+      display: grid;
+      gap: 12px;
+    }
+
+    .rail-card {
+      border-radius: 20px;
+      padding: 16px;
+      background: rgba(25,25,21,.74);
+    }
+
+    .rail-card p {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .file-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .file-card {
+      border: 1px solid var(--line);
+      border-radius: 17px;
+      padding: 13px;
+      background: rgba(255,255,255,.035);
+    }
+
+    .file-card strong {
+      display: block;
+      color: var(--cyan);
+      font: 800 12px/1.2 var(--mono);
+      word-break: break-word;
+    }
+
+    .file-card span {
+      display: block;
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .table-wrap {
+      border-radius: 22px;
+      overflow: hidden;
+      margin-top: 14px;
+      background: rgba(19, 20, 17, .86);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th, td {
+      padding: 13px 14px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--ink);
+      background: rgba(255,255,255,.035);
+      font: 900 11px/1 var(--mono);
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    td { color: var(--muted); }
+    tr:last-child td { border-bottom: 0; }
+
+    .status-pill {
+      display: inline-flex;
+      border-radius: 999px;
+      padding: 5px 8px;
+      font: 900 11px/1 var(--mono);
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      background: rgba(255,255,255,.04);
+    }
+
+    .status-pill.good { color: var(--moss); border-color: rgba(157,217,143,.32); background: var(--moss-soft); }
+    .status-pill.warn { color: var(--ochre); border-color: rgba(242,185,95,.35); background: var(--ochre-soft); }
+    .status-pill.hot { color: var(--rose); border-color: rgba(255,118,118,.35); background: var(--rose-soft); }
+    .status-pill.info { color: var(--cyan); border-color: rgba(126,216,210,.35); background: var(--cyan-soft); }
+
+    .sequence {
+      display: grid;
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .sequence-item {
+      display: grid;
+      grid-template-columns: 34px 1fr;
+      gap: 12px;
+      align-items: start;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 13px;
+      background: rgba(255,255,255,.03);
+    }
+
+    .sequence-item strong { display: block; margin-bottom: 3px; }
+    .sequence-item span { color: var(--muted); font-size: 14px; }
+
+    .callout {
+      margin-top: 14px;
+      border: 1px solid rgba(242,185,95,.34);
+      background: rgba(242,185,95,.095);
+      border-radius: 20px;
+      padding: 15px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .callout strong { color: var(--ochre); }
+
+    .mini-code {
+      margin-top: 14px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 14px;
+      overflow-x: auto;
+      background: rgba(0,0,0,.24);
+      color: #d8d0b8;
+      font: 13px/1.55 var(--mono);
+    }
+
+    .mini-code .green { color: var(--moss); }
+    .mini-code .cyan { color: var(--cyan); }
+    .mini-code .rose { color: var(--rose); }
+    .mini-code .dim { color: var(--dim); }
+
+    footer {
+      margin-top: 24px;
+      color: var(--dim);
+      font: 700 12px/1.4 var(--mono);
+      text-align: center;
+    }
+
+    @media (max-width: 1100px) {
+      header, .layout, .split { grid-template-columns: 1fr; }
+      .sidebar { position: static; }
+      .diagram { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .wide { grid-column: span 1; }
+    }
+
+    @media (max-width: 680px) {
+      main { width: min(100% - 20px, 1420px); padding-top: 24px; }
+      .diagram, .file-grid { grid-template-columns: 1fr; }
+      .full { grid-column: auto; }
+      .meter-row { grid-template-columns: 1fr; gap: 7px; }
+      .flow-label { align-items: start; flex-direction: column; }
+      .connector-svg { display: none; }
+      h1 { font-size: 48px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <section>
+        <p class="kicker">Orglabeler design doc · option 2</p>
+        <h1>TEST_PDS through the existing recompute loop.</h1>
+      </section>
+      <aside class="hero-card">
+        <p class="summary">
+          Instead of adding a second worker like hyperlabel, reuse orglabeler’s durable recompute worker.
+          PDS resolution becomes another job kind; scoring stays fast, and a later recompute corrects labels once the actor’s PDS is known.
+        </p>
+        <div class="chips">
+          <span class="chip">No Tap-path network lookup</span>
+          <span class="chip warn">Eventually correct for cache misses</span>
+          <span class="chip hot">Matching PDS forces likely-test</span>
+        </div>
+        <div class="hero-meter" aria-label="Implementation tradeoffs">
+          <div class="meter-row"><span>Reuse</span><div class="meter"><span style="--value: 92%"></span></div><span>high</span></div>
+          <div class="meter-row"><span>Latency risk</span><div class="meter"><span style="--value: 24%"></span></div><span>low</span></div>
+          <div class="meter-row"><span>First-pass certainty</span><div class="meter"><span style="--value: 72%"></span></div><span>cache based</span></div>
+        </div>
+      </aside>
+    </header>
+
+    <section class="layout">
+      <aside class="sidebar" aria-label="Interactive controls">
+        <div class="panel">
+          <div class="panel-title">
+            <h3>Run a path</h3>
+            <span class="eyebrow">Simulator</span>
+          </div>
+          <div class="scenario-list" id="scenarioButtons">
+            <button class="scenario-button" data-scenario="cached-test" aria-pressed="true">
+              <span class="scenario-name">Cached test PDS</span>
+              <span class="scenario-desc">Fast path: existing DID → PDS cache says the actor is on a configured test host.</span>
+            </button>
+            <button class="scenario-button" data-scenario="cache-miss" aria-pressed="false">
+              <span class="scenario-name">Unknown actor</span>
+              <span class="scenario-desc">First pass scores normally, then queues PDS resolution and recomputes.</span>
+            </button>
+            <button class="scenario-button" data-scenario="cached-prod" aria-pressed="false">
+              <span class="scenario-name">Cached production PDS</span>
+              <span class="scenario-desc">Cache exists but host is not in TEST_PDS_HOSTS, so completeness scoring wins.</span>
+            </button>
+          </div>
+          <label class="switch">
+            <span><strong>TEST_PDS_HOSTS configured</strong><br>Turn off to see the whole feature become inert.</span>
+            <input id="enabledToggle" type="checkbox" checked>
+            <span class="toggle-track" aria-hidden="true"></span>
+          </label>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">
+            <h3>Current outcome</h3>
+            <span class="eyebrow" id="outcomeCode">LIKELY-TEST</span>
+          </div>
+          <div class="log" id="runLog"></div>
+        </div>
+      </aside>
+
+      <section>
+        <nav class="tabs" aria-label="Design doc sections">
+          <button class="tab-button" data-tab="flow" aria-selected="true">Flow map</button>
+          <button class="tab-button" data-tab="implementation" aria-selected="false">Implementation seams</button>
+          <button class="tab-button" data-tab="contracts" aria-selected="false">State contracts</button>
+          <button class="tab-button" data-tab="failure" aria-selected="false">Failure modes</button>
+        </nav>
+
+        <article class="tab-panel active" id="tab-flow">
+          <div class="flow-stage">
+            <svg class="connector-svg" viewBox="0 0 1000 620" preserveAspectRatio="none" aria-hidden="true">
+              <path d="M95 118 C210 118 220 118 338 118"></path>
+              <path d="M445 118 C565 118 570 118 690 118"></path>
+              <path class="hot" d="M790 158 C850 230 842 298 760 356"></path>
+              <path d="M760 190 C655 268 560 325 458 390"></path>
+              <path d="M344 390 C225 390 205 390 90 390"></path>
+              <path class="async" d="M447 455 C558 515 645 515 754 455"></path>
+              <path class="async" d="M755 455 C855 425 856 318 757 236"></path>
+            </svg>
+            <div class="flow-label">
+              <div>
+                <h2 id="scenarioTitle">Cached test PDS path</h2>
+                <p class="route-caption" id="scenarioCaption">The cached actor PDS host matches TEST_PDS_HOSTS, so the recompute result is rewritten to likely-test before DB logging and label sync.</p>
+              </div>
+              <span class="status-pill hot" id="scenarioPill">override active</span>
+            </div>
+
+            <div class="diagram" id="diagram">
+              <section class="node" data-step="tap" data-state="active">
+                <div class="node-title"><strong>Tap event writes snapshots</strong><span class="node-num">1</span></div>
+                <p>Profile and organization records are persisted. The Tap handler still avoids slow external work.</p>
+                <span class="state">snapshot saved</span>
+              </section>
+
+              <section class="node" data-step="job" data-state="active">
+                <div class="node-title"><strong>Durable recompute job</strong><span class="node-num">2</span></div>
+                <p><code>enqueueRecomputeJob('recompute-org', did)</code> coalesces actor-level scoring work.</p>
+                <span class="state">debounced</span>
+              </section>
+
+              <section class="node" data-step="score" data-state="active">
+                <div class="node-title"><strong>Completeness scoring</strong><span class="node-num">3</span></div>
+                <p>Build merged profile + organization input, score authenticity/completeness, and keep validation notes.</p>
+                <span class="state">pure score</span>
+              </section>
+
+              <section class="node" data-step="cache" data-state="active">
+                <div class="node-title"><strong>Actor PDS cache check</strong><span class="node-num">4</span></div>
+                <p>Read local <code>actor_pds_cache</code>. Missing or stale rows queue a PDS-resolution job.</p>
+                <span class="state">cache hit</span>
+              </section>
+
+              <section class="node wide" data-step="override" data-state="override">
+                <div class="node-title"><strong>PDS test override</strong><span class="node-num">5</span></div>
+                <p>Add <code>actor-pds-test-host: host</code> to <code>testSignals</code> when the normalized host is configured. The numeric score stays unchanged.</p>
+                <span class="state">tier forced to likely-test</span>
+              </section>
+
+              <section class="node" data-step="db" data-state="active">
+                <div class="node-title"><strong>Log activity row</strong><span class="node-num">6</span></div>
+                <p>Store score, tier, breakdown, test signals, validation notes, and HF fields as today.</p>
+                <span class="state">DB source of truth</span>
+              </section>
+
+              <section class="node" data-step="label" data-state="active">
+                <div class="node-title"><strong>Sync ATProto label</strong><span class="node-num">7</span></div>
+                <p>Apply the DB tier to the organization record URI. Existing quality labels are negated if needed.</p>
+                <span class="state">label applied</span>
+              </section>
+
+              <section class="node" data-step="resolve" data-state="muted">
+                <div class="node-title"><strong>Resolve DID → PDS</strong><span class="node-num">8</span></div>
+                <p>For cache misses, the same worker handles <code>resolve-actor-pds</code>, fetches the DID document, and caches host state.</p>
+                <span class="state">async only</span>
+              </section>
+
+              <section class="node wide" data-step="second" data-state="muted">
+                <div class="node-title"><strong>Correction recompute</strong><span class="node-num">9</span></div>
+                <p>After resolving PDS, enqueue <code>recompute-org</code> again so DB, labels, and URL-enrichment eligibility converge on the cached host truth.</p>
+                <span class="state">eventual correction</span>
+              </section>
+            </div>
+          </div>
+        </article>
+
+        <article class="tab-panel" id="tab-implementation">
+          <div class="split">
+            <section class="rail">
+              <div class="rail-card">
+                <h2>Implementation seam</h2>
+                <p>The key difference from hyperlabel: no standalone actor-PDS worker. Add one new recompute job kind and run it inside <code>startRecomputeWorker()</code>.</p>
+                <div class="mini-code"><span class="dim">// recompute worker loop</span><br>
+if (job.kind === <span class="green">'resolve-actor-pds'</span>) {<br>
+&nbsp;&nbsp;<span class="cyan">resolveAndCacheActorPds</span>(job.key)<br>
+&nbsp;&nbsp;<span class="cyan">enqueueRecomputeJob</span>(<span class="green">'recompute-org'</span>, job.key)<br>
+&nbsp;&nbsp;<span class="cyan">completeRecomputeJob</span>(job.id)<br>
+}<br><br>
+if (job.kind === <span class="green">'recompute-org'</span>) {<br>
+&nbsp;&nbsp;await <span class="cyan">recomputeLabeledOrganizationRow</span>(job.key)<br>
+}</div>
+              </div>
+
+              <div class="rail-card">
+                <h3>Why this shape</h3>
+                <p>It preserves Tap ack speed, avoids a second interval worker, and lets the existing retry/backoff/recovery path handle PDS failures.</p>
+              </div>
+            </section>
+
+            <section class="rail-card">
+              <h2>Files to touch</h2>
+              <div class="file-grid">
+                <div class="file-card"><strong>src/lib/config.ts</strong><span>Add <code>TEST_PDS_HOSTS</code> parsed from env.</span></div>
+                <div class="file-card"><strong>src/lib/pds-utils.ts</strong><span>Normalize hostnames, parse comma-separated values, exact-match configured hosts.</span></div>
+                <div class="file-card"><strong>src/lib/pds-test-override.ts</strong><span>Manage the stable test signal and derive the override tier.</span></div>
+                <div class="file-card"><strong>src/lib/actor-pds-policy.ts</strong><span>Centralize cache-miss enqueueing and URL-enrichment gating.</span></div>
+                <div class="file-card"><strong>src/lib/resolve-pds.ts</strong><span>Add <code>resolvePdsForDid()</code> for <code>did:plc</code> and ideally <code>did:web</code>.</span></div>
+                <div class="file-card"><strong>src/lib/db.ts</strong><span>Add <code>actor_pds_cache</code> helpers and extend <code>RecomputeJobKind</code>.</span></div>
+                <div class="file-card"><strong>src/labeler/tap-consumer.ts</strong><span>Apply cached PDS override during recompute and process resolution jobs.</span></div>
+                <div class="file-card"><strong>src/labeler/url-enrichment-worker.ts</strong><span>Skip URL checks for test-PDS actors and defer checks while PDS is unknown or stale.</span></div>
+                <div class="file-card"><strong>README.md / DEPLOYMENT.md</strong><span>Document <code>TEST_PDS_HOSTS</code>, URL gating, and first-pass correction behavior.</span></div>
+              </div>
+            </section>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Step</th><th>Change</th><th>Developer-readable behavior</th></tr></thead>
+              <tbody>
+                <tr><td><span class="status-pill info">1</span></td><td>Parse env</td><td><code>TEST_PDS_HOSTS="epds1.test.certified.app,dev.example"</code> becomes normalized exact host list.</td></tr>
+                <tr><td><span class="status-pill info">2</span></td><td>Persist cache</td><td><code>actor_pds_cache</code> stores <code>pending | ok | failed</code>, host, URL, expiry, and last error.</td></tr>
+                <tr><td><span class="status-pill info">3</span></td><td>Score normally</td><td>Normal authenticity/completeness score is produced first.</td></tr>
+                <tr><td><span class="status-pill hot">4</span></td><td>Override tier</td><td>If cached host matches configured test hosts, add a test signal and force <code>likely-test</code>.</td></tr>
+                <tr><td><span class="status-pill warn">5</span></td><td>Resolve later</td><td>Missing/stale cache rows queue <code>resolve-actor-pds</code>; resolved cache triggers another org recompute.</td></tr>
+                <tr><td><span class="status-pill good">6</span></td><td>Gate URL checks</td><td>URL enrichment is deferred until PDS cache is fresh, skipped for configured test PDS hosts, and allowed for fresh non-test hosts.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="tab-panel" id="tab-contracts">
+          <div class="split">
+            <section class="rail-card">
+              <h2>State contracts</h2>
+              <div class="sequence">
+                <div class="sequence-item"><span class="dot">A</span><div><strong>Config is optional.</strong><span>If <code>TEST_PDS_HOSTS</code> is empty, PDS cache checks and resolution jobs are skipped.</span></div></div>
+                <div class="sequence-item"><span class="dot">B</span><div><strong>The score stays honest.</strong><span>PDS override does not mutate <code>totalScore</code> or completeness breakdown. It only changes <code>testSignals</code> and derived tier.</span></div></div>
+                <div class="sequence-item"><span class="dot">C</span><div><strong>Signals are stable.</strong><span>Use a prefix like <code>actor-pds-test-host:</code> so stale PDS signals can be removed when config/cache changes.</span></div></div>
+                <div class="sequence-item"><span class="dot">D</span><div><strong>Labels follow DB.</strong><span>The recompute result is logged first; then ATProto label sync uses the DB tier.</span></div></div>
+                <div class="sequence-item"><span class="dot">E</span><div><strong>URL checks wait for PDS truth.</strong><span>With <code>TEST_PDS_HOSTS</code> set, URL enrichment only runs after a fresh non-test PDS cache hit.</span></div></div>
+              </div>
+            </section>
+
+            <section class="rail-card">
+              <h2>Data model sketch</h2>
+              <div class="mini-code">CREATE TABLE actor_pds_cache (<br>
+&nbsp;&nbsp;did TEXT PRIMARY KEY,<br>
+&nbsp;&nbsp;status TEXT NOT NULL CHECK(status IN (<span class="green">'pending'</span>, <span class="green">'ok'</span>, <span class="green">'failed'</span>)),<br>
+&nbsp;&nbsp;pds_url TEXT,<br>
+&nbsp;&nbsp;pds_host TEXT,<br>
+&nbsp;&nbsp;checked_at TEXT,<br>
+&nbsp;&nbsp;expires_at TEXT NOT NULL,<br>
+&nbsp;&nbsp;last_error TEXT,<br>
+&nbsp;&nbsp;created_at TEXT NOT NULL DEFAULT (datetime(<span class="green">'now'</span>)),<br>
+&nbsp;&nbsp;updated_at TEXT NOT NULL DEFAULT (datetime(<span class="green">'now'</span>))<br>
+);</div>
+              <div class="callout"><strong>Exact host matching only.</strong> Start with normalized exact host equality. Wildcards look convenient, but they create surprising label scope.</div>
+            </section>
+          </div>
+        </article>
+
+        <article class="tab-panel" id="tab-failure">
+          <div class="flow-stage">
+            <div class="flow-label">
+              <div>
+                <h2>Failure and edge-case behavior</h2>
+                <p class="route-caption">The easy path should be correct, but the failure path must be boring: retry, keep prior data if safe, and tell operators what happened.</p>
+              </div>
+              <span class="status-pill warn">operator-visible</span>
+            </div>
+
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Case</th><th>Behavior</th><th>What to log / expose</th></tr></thead>
+                <tbody>
+                  <tr><td>Cache miss</td><td>Queue <code>resolve-actor-pds</code>; first recompute uses normal tier and URL enrichment is deferred.</td><td><span class="status-pill warn">pending correction</span> reason: cache miss.</td></tr>
+                  <tr><td>Cache stale</td><td>Use stale host if present for current recompute, refresh in background, and defer URL enrichment until fresh.</td><td><span class="status-pill info">refresh queued</span> reason: stale cache.</td></tr>
+                  <tr><td>DID document fetch fails</td><td>Record failed cache attempt and retry with bounded backoff.</td><td><span class="status-pill warn">retry</span> include HTTP status/error message.</td></tr>
+                  <tr><td>Configured host removed</td><td>Recompute removes stale <code>actor-pds-test-host:</code> signals and lets score tier win.</td><td><span class="status-pill good">self-healing</span> count of rows updated.</td></tr>
+                  <tr><td>Actor moves PDS</td><td>TTL expiry refreshes cache; next recompute corrects labels and URL-enrichment eligibility.</td><td><span class="status-pill info">cache updated</span> old host → new host.</td></tr>
+                  <tr><td>Strict no-temporary-label requirement</td><td>This design is eventually correct. If temporary standard/high-quality labels are unacceptable, switch to blocking lookup or pre-seed cache.</td><td><span class="status-pill hot">product decision</span> document explicitly.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </article>
+      </section>
+    </section>
+
+    <footer>Self-contained design artifact: docs/test-pds-option-2-design.html</footer>
+  </main>
+
+  <script>
+    const scenarios = {
+      'cached-test': {
+        title: 'Cached test PDS path',
+        caption: 'The cached actor PDS host matches TEST_PDS_HOSTS, so the recompute result is rewritten to likely-test before DB logging and label sync.',
+        pill: ['override active', 'hot'],
+        outcome: 'LIKELY-TEST',
+        states: {
+          tap: 'active', job: 'active', score: 'active', cache: 'active', override: 'override', db: 'active', label: 'active', resolve: 'muted', second: 'muted'
+        },
+        nodeLabels: {
+          cache: 'cache hit', override: 'tier forced to likely-test', label: 'likely-test label'
+        },
+        log: [
+          ['1', 'Snapshot saved', 'Tap handler stores organization/profile state and exits quickly.'],
+          ['2', 'Cache hit', 'actor_pds_cache has epds1.test.certified.app for this DID.'],
+          ['3', 'Override', 'Add actor-pds-test-host signal; score remains unchanged.'],
+          ['4', 'Skip URLs', 'URL enrichment is skipped because URL scoring cannot change a test-PDS label.'],
+          ['5', 'Sync', 'DB tier and ATProto label become likely-test.']
+        ]
+      },
+      'cache-miss': {
+        title: 'Unknown actor path',
+        caption: 'The first recompute has no PDS host yet. It scores normally, queues PDS resolution, then a second recompute applies the override if the resolved host is configured.',
+        pill: ['eventual correction', 'warn'],
+        outcome: 'FIRST NORMAL → THEN LIKELY-TEST IF MATCHED',
+        states: {
+          tap: 'active', job: 'active', score: 'active', cache: 'pending', override: 'muted', db: 'active', label: 'active', resolve: 'async', second: 'async'
+        },
+        nodeLabels: {
+          cache: 'cache miss', override: 'waiting for host', label: 'temporary score label', resolve: 'resolve queued', second: 'correction pass'
+        },
+        log: [
+          ['1', 'Cache miss', 'No actor PDS row exists yet, so normal score is used for the first pass.'],
+          ['2', 'Defer URLs', 'URL enrichment waits because the actor may be on a configured test PDS.'],
+          ['3', 'Queue resolve', 'Worker creates resolve-actor-pds for the DID.'],
+          ['4', 'Cache write', 'DID document yields a PDS host and stores ok/failed state.'],
+          ['5', 'Recompute', 'A follow-up recompute updates DB, ATProto label, and URL-check eligibility.']
+        ]
+      },
+      'cached-prod': {
+        title: 'Cached production PDS path',
+        caption: 'The actor PDS is known, but it does not match TEST_PDS_HOSTS. PDS-specific signals are removed and the normal score tier wins.',
+        pill: ['no override', 'good'],
+        outcome: 'SCORE TIER',
+        states: {
+          tap: 'active', job: 'active', score: 'active', cache: 'active', override: 'muted', db: 'active', label: 'active', resolve: 'muted', second: 'muted'
+        },
+        nodeLabels: {
+          cache: 'non-test hit', override: 'stale PDS signals removed', label: 'score label'
+        },
+        log: [
+          ['1', 'Cache hit', 'actor_pds_cache has a host, but it is not configured as test.'],
+          ['2', 'No override', 'Any stale actor-pds-test-host signal is removed.'],
+          ['3', 'Score wins', 'high-quality, standard, or likely-test comes from normal scoring.'],
+          ['4', 'Run URLs', 'URL enrichment is allowed because the fresh PDS cache is non-test.'],
+          ['5', 'Sync', 'DB and ATProto labels reflect the score tier.']
+        ]
+      },
+      disabled: {
+        title: 'TEST_PDS_HOSTS disabled',
+        caption: 'When the env var is empty, all PDS-specific work is inert. No cache lookup, no PDS-resolution jobs, no override signals.',
+        pill: ['feature off', 'info'],
+        outcome: 'SCORE TIER ONLY',
+        states: {
+          tap: 'active', job: 'active', score: 'active', cache: 'muted', override: 'muted', db: 'active', label: 'active', resolve: 'muted', second: 'muted'
+        },
+        nodeLabels: {
+          cache: 'skipped', override: 'disabled', label: 'score label'
+        },
+        log: [
+          ['1', 'Env empty', 'TEST_PDS_HOSTS has no configured hosts.'],
+          ['2', 'Skip PDS', 'No actor cache reads or DID-document jobs are performed.'],
+          ['3', 'Score wins', 'Normal orglabeler scoring determines tier.'],
+          ['4', 'Sync', 'ATProto label follows DB tier as today.']
+        ]
+      }
+    }
+
+    const nodes = [...document.querySelectorAll('.node')]
+    const scenarioButtons = [...document.querySelectorAll('.scenario-button')]
+    const enabledToggle = document.querySelector('#enabledToggle')
+    const title = document.querySelector('#scenarioTitle')
+    const caption = document.querySelector('#scenarioCaption')
+    const pill = document.querySelector('#scenarioPill')
+    const outcomeCode = document.querySelector('#outcomeCode')
+    const runLog = document.querySelector('#runLog')
+    let selectedScenario = 'cached-test'
+
+    function renderScenario() {
+      const scenario = enabledToggle.checked ? scenarios[selectedScenario] : scenarios.disabled
+      title.textContent = scenario.title
+      caption.textContent = scenario.caption
+      pill.textContent = scenario.pill[0]
+      pill.className = `status-pill ${scenario.pill[1]}`
+      outcomeCode.textContent = scenario.outcome
+
+      nodes.forEach(node => {
+        const key = node.dataset.step
+        node.dataset.state = scenario.states[key] || 'muted'
+        const label = scenario.nodeLabels?.[key]
+        if (label) node.querySelector('.state').textContent = label
+      })
+
+      runLog.innerHTML = scenario.log.map(([number, heading, body]) => `
+        <div class="log-line">
+          <span class="dot">${number}</span>
+          <span><strong>${heading}</strong><br>${body}</span>
+        </div>
+      `).join('')
+
+      scenarioButtons.forEach(button => {
+        button.setAttribute('aria-pressed', String(enabledToggle.checked && button.dataset.scenario === selectedScenario))
+      })
+    }
+
+    scenarioButtons.forEach(button => {
+      button.addEventListener('click', () => {
+        selectedScenario = button.dataset.scenario
+        if (!enabledToggle.checked) enabledToggle.checked = true
+        renderScenario()
+      })
+    })
+
+    enabledToggle.addEventListener('change', renderScenario)
+
+    const tabButtons = [...document.querySelectorAll('.tab-button')]
+    const tabPanels = [...document.querySelectorAll('.tab-panel')]
+    tabButtons.forEach(button => {
+      button.addEventListener('click', () => {
+        tabButtons.forEach(item => item.setAttribute('aria-selected', 'false'))
+        tabPanels.forEach(panel => panel.classList.remove('active'))
+        button.setAttribute('aria-selected', 'true')
+        document.querySelector(`#tab-${button.dataset.tab}`).classList.add('active')
+      })
+    })
+
+    renderScenario()
+  </script>
+</body>
+</html>

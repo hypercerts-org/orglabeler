@@ -56,7 +56,7 @@ interface PendingOrganizationDeleteRow {
   updated_at: string
 }
 
-export type RecomputeJobKind = 'recompute-org'
+export type RecomputeJobKind = 'recompute-org' | 'resolve-actor-pds'
 export type RecomputeJobStatus = 'pending' | 'running' | 'done' | 'failed'
 
 export interface RecomputeJob {
@@ -80,6 +80,33 @@ interface RecomputeJobRow {
   attempts: number
   run_after: string
   payload: string | null
+  last_error: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type ActorPdsCacheStatus = 'pending' | 'ok' | 'failed'
+
+/** Cached DID → PDS resolution state used by test-PDS labeling and URL gating. */
+export interface ActorPdsCache {
+  did: string
+  status: ActorPdsCacheStatus
+  pdsUrl: string | null
+  pdsHost: string | null
+  checkedAt: string | null
+  expiresAt: string
+  lastError: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+interface ActorPdsCacheRow {
+  did: string
+  status: string
+  pds_url: string | null
+  pds_host: string | null
+  checked_at: string | null
+  expires_at: string
   last_error: string | null
   created_at: string
   updated_at: string
@@ -183,6 +210,25 @@ function createRecomputeJobsTable(db: Database.Database): void {
   `)
 }
 
+function createActorPdsCacheTable(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS actor_pds_cache (
+      did TEXT PRIMARY KEY,
+      status TEXT NOT NULL CHECK(status IN ('pending', 'ok', 'failed')),
+      pds_url TEXT,
+      pds_host TEXT,
+      checked_at TEXT,
+      expires_at TEXT NOT NULL,
+      last_error TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_actor_pds_cache_status_expires ON actor_pds_cache(status, expires_at);
+    CREATE INDEX IF NOT EXISTS idx_actor_pds_cache_host ON actor_pds_cache(pds_host);
+  `)
+}
+
 function createUrlChecksTable(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS url_checks (
@@ -253,6 +299,7 @@ export function getDb(): Database.Database {
   createActivitiesTable(_db)
   createSnapshotTables(_db)
   createRecomputeJobsTable(_db)
+  createActorPdsCacheTable(_db)
   createUrlChecksTable(_db)
 
   // Migration: recreate tables whose tier CHECK constraint predates the active 3-tier set.
@@ -679,6 +726,80 @@ export function getRecomputeJobCounts(): Record<RecomputeJobStatus, number> {
   return counts
 }
 
+/** Reads cached actor PDS state, if this DID has been resolved before. */
+export function getActorPdsCache(did: string): ActorPdsCache | null {
+  const db = getDb()
+  const row = db.prepare(`
+    SELECT did, status, pds_url, pds_host, checked_at, expires_at, last_error, created_at, updated_at
+    FROM actor_pds_cache
+    WHERE did = ?
+  `).get(did) as ActorPdsCacheRow | undefined
+
+  return row ? actorPdsCacheRowToEntry(row) : null
+}
+
+/** Returns true when a cached PDS row should be refreshed before URL enrichment. */
+export function isActorPdsCacheStale(cache: ActorPdsCache, now = new Date().toISOString()): boolean {
+  return cache.expiresAt <= now
+}
+
+/** Creates or refreshes a pending actor PDS cache row without erasing old host data. */
+export function recordActorPdsPending(did: string, retryAfterMs: number): void {
+  const db = getDb()
+  const expiresAt = new Date(Date.now() + retryAfterMs).toISOString()
+  db.prepare(`
+    INSERT INTO actor_pds_cache
+      (did, status, pds_url, pds_host, checked_at, expires_at, last_error, created_at, updated_at)
+    VALUES
+      (@did, 'pending', NULL, NULL, NULL, @expiresAt, NULL, datetime('now'), datetime('now'))
+    ON CONFLICT(did) DO UPDATE SET
+      status = 'pending',
+      expires_at = excluded.expires_at,
+      last_error = NULL,
+      updated_at = datetime('now')
+  `).run({ did, expiresAt })
+}
+
+/** Stores a successful actor DID → PDS resolution result. */
+export function recordActorPdsOk(did: string, pdsUrl: string, pdsHost: string, ttlMs: number): void {
+  const db = getDb()
+  const now = new Date().toISOString()
+  const expiresAt = new Date(Date.now() + ttlMs).toISOString()
+  db.prepare(`
+    INSERT INTO actor_pds_cache
+      (did, status, pds_url, pds_host, checked_at, expires_at, last_error, created_at, updated_at)
+    VALUES
+      (@did, 'ok', @pdsUrl, @pdsHost, @now, @expiresAt, NULL, datetime('now'), datetime('now'))
+    ON CONFLICT(did) DO UPDATE SET
+      status = 'ok',
+      pds_url = excluded.pds_url,
+      pds_host = excluded.pds_host,
+      checked_at = excluded.checked_at,
+      expires_at = excluded.expires_at,
+      last_error = NULL,
+      updated_at = datetime('now')
+  `).run({ did, pdsUrl, pdsHost, now, expiresAt })
+}
+
+/** Stores a failed actor PDS resolution attempt while preserving any stale host. */
+export function recordActorPdsFailure(did: string, errorMessage: string, retryAfterMs: number): void {
+  const db = getDb()
+  const now = new Date().toISOString()
+  const expiresAt = new Date(Date.now() + retryAfterMs).toISOString()
+  db.prepare(`
+    INSERT INTO actor_pds_cache
+      (did, status, pds_url, pds_host, checked_at, expires_at, last_error, created_at, updated_at)
+    VALUES
+      (@did, 'failed', NULL, NULL, @now, @expiresAt, @errorMessage, datetime('now'), datetime('now'))
+    ON CONFLICT(did) DO UPDATE SET
+      status = 'failed',
+      checked_at = excluded.checked_at,
+      expires_at = excluded.expires_at,
+      last_error = excluded.last_error,
+      updated_at = datetime('now')
+  `).run({ did, now, expiresAt, errorMessage })
+}
+
 /**
  * Ensures a normalized public URL has a cache row for async enrichment.
  * Fresh ok/failed rows are left untouched so repeated snapshots do not reset TTLs.
@@ -1076,6 +1197,20 @@ export function getActivityByDidRkey(did: string, rkey: string): ActivityLogEntr
     `SELECT ${ACTIVITY_SELECT_COLUMNS} FROM activities WHERE did = ? AND rkey = ?`
   ).get(did, rkey) as Record<string, unknown> | undefined
   return row ? rowToEntry(row) : null
+}
+
+function actorPdsCacheRowToEntry(row: ActorPdsCacheRow): ActorPdsCache {
+  return {
+    did: row.did,
+    status: row.status as ActorPdsCacheStatus,
+    pdsUrl: row.pds_url,
+    pdsHost: row.pds_host,
+    checkedAt: row.checked_at,
+    expiresAt: row.expires_at,
+    lastError: row.last_error,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
 }
 
 function recomputeJobRowToEntry(row: RecomputeJobRow): RecomputeJob {
