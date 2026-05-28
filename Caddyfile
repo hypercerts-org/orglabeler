@@ -20,7 +20,7 @@
   }
 
   @publicLabelerXrpc {
-    path /xrpc/com.atproto.label.queryLabels /xrpc/com.atproto.label.subscribeLabels
+    path /xrpc/_health /xrpc/com.atproto.label.queryLabels /xrpc/com.atproto.label.subscribeLabels
   }
 
   handle @publicLabelerXrpc {
