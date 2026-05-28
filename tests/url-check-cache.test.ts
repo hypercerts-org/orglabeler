@@ -69,7 +69,7 @@ test('expired ok URL checks are refreshed as new pending checks', () => {
 })
 
 test('failed URL cache state removes provisional URL resolve points', async () => {
-  const url = 'https://example.org/'
+  const url = 'https://forest-recovery.example.coop/'
   const base: MergedScoringInput = {
     did: 'did:example:score',
     displayName: 'Example Org',
