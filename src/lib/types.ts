@@ -89,7 +89,7 @@ export type LegacyLabelTier = 'pending' | 'draft'
 export type LabelTier = RuntimeLabelTier | LegacyLabelTier
 
 export interface ScoreResult {
-  totalScore: number       // normalized 0-100 completeness score
+  totalScore: number       // final score: 0-100 completeness plus configured bonuses
   tier: LabelTier
   breakdown: ScoreBreakdown
   testSignals: string[]    // reasons flagged as test data
@@ -109,6 +109,7 @@ export interface ScoreBreakdown {
   foundedDateAge: number
   avatar: number
   banner: number
+  trustedPds: number       // bonus for actors hosted on configured trusted PDS hosts
 }
 
 export interface LabelDefinition {

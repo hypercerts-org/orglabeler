@@ -3,6 +3,7 @@ import type { MergedScoringInput, UrlResolutionMap, UrlResolutionState } from '.
 import { AUTHENTICITY_FAILURE_TIER, COMPLETENESS_WEIGHTS, FOUNDED_DATE_AGE_BUCKETS, SCORE_THRESHOLDS } from './constants'
 import { evaluateMergedActorAuthenticity } from './scoring-authenticity'
 import { validateOrganizationLocationRef } from './location-utils'
+import { isConfiguredPdsHost } from './pds-utils'
 import { displayNameMatchesWebsiteDomain, normalizePublicWebsiteUrl } from './website-utils'
 
 export type ScoreResultWithValidationNotes = ScoreResult & {
@@ -23,6 +24,7 @@ const ZERO_BREAKDOWN: ScoreBreakdown = {
   foundedDateAge: 0,
   avatar: 0,
   banner: 0,
+  trustedPds: 0,
 }
 
 // Organization records do not currently cap the number of URL refs in the
@@ -128,6 +130,19 @@ function scoreBanner(hasBanner: boolean): number {
   return hasBanner ? COMPLETENESS_WEIGHTS.banner : 0
 }
 
+/**
+ * Returns the trusted-PDS score bonus for an actor's resolved PDS host.
+ * This must be called with the actor PDS host from DID resolution, not website domains.
+ */
+export function scoreTrustedPdsBonus(
+  actorPdsHost: string | null | undefined,
+  trustedPdsHosts: readonly string[] = [],
+  trustedPdsBonus = 0,
+): number {
+  if (trustedPdsBonus <= 0) return 0
+  return isConfiguredPdsHost(actorPdsHost, trustedPdsHosts) ? trustedPdsBonus : 0
+}
+
 export async function scoreActivity(record: MergedScoringInput): Promise<ScoreResultWithValidationNotes> {
   const authenticity = evaluateMergedActorAuthenticity(record)
   const validationNotes = record.validationNotes ?? []
@@ -157,6 +172,7 @@ export async function scoreActivity(record: MergedScoringInput): Promise<ScoreRe
   const foundedDateAge = scoreFoundedDateAge(record.foundedDate, now)
   const avatar = scoreAvatar(record.hasAvatar)
   const banner = scoreBanner(record.hasBanner)
+  const trustedPds = scoreTrustedPdsBonus(record.actorPdsHost, record.trustedPdsHosts, record.trustedPdsBonus)
 
   const breakdown: ScoreBreakdown = {
     displayName,
@@ -172,6 +188,7 @@ export async function scoreActivity(record: MergedScoringInput): Promise<ScoreRe
     foundedDateAge,
     avatar,
     banner,
+    trustedPds,
   }
 
   const rawScore = Object.values(breakdown).reduce((sum, value) => sum + value, 0)

@@ -21,8 +21,8 @@ export function normalizePdsHostFromUrl(pdsUrl: string): string | null {
   return normalizePdsHost(pdsUrl)
 }
 
-/** Parses a comma-separated TEST_PDS_HOSTS value into unique normalized hosts. */
-export function parseTestPdsHosts(value: string): string[] {
+/** Parses comma-separated PDS hosts or endpoint URLs into unique normalized hostnames. */
+export function parsePdsHosts(value: string): string[] {
   const hosts = value
     .split(',')
     .map(host => normalizePdsHost(host))
@@ -31,11 +31,24 @@ export function parseTestPdsHosts(value: string): string[] {
   return [...new Set(hosts)]
 }
 
+/** Parses TEST_PDS_HOSTS into normalized exact-match hostnames. */
+export function parseTestPdsHosts(value: string): string[] {
+  return parsePdsHosts(value)
+}
+
+/** Checks whether a PDS host exactly matches one of the configured hosts. */
+export function isConfiguredPdsHost(
+  pdsHost: string | null | undefined,
+  configuredHosts: readonly string[],
+): boolean {
+  const normalized = pdsHost ? normalizePdsHost(pdsHost) : null
+  return normalized !== null && configuredHosts.includes(normalized)
+}
+
 /** Checks whether a PDS host exactly matches one of the configured test hosts. */
 export function isConfiguredTestPdsHost(
   pdsHost: string | null | undefined,
   testPdsHosts: readonly string[],
 ): boolean {
-  const normalized = pdsHost ? normalizePdsHost(pdsHost) : null
-  return normalized !== null && testPdsHosts.includes(normalized)
+  return isConfiguredPdsHost(pdsHost, testPdsHosts)
 }

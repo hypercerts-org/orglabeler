@@ -52,6 +52,7 @@ export function ScoreCard({ entry, defaultExpanded = false }: ScoreCardProps) {
   const shortDid = entry.did.replace('did:plc:', '').slice(0, 12) + '…'
   const recordUrl = buildRecordUrl(entry.did, ORGANIZATION_COLLECTION, entry.rkey)
   const barColor = TIER_BAR_COLORS[entry.tier]
+  const scoreWidth = Math.max(0, Math.min(entry.score, 100))
   const relativeTime = getRelativeTime(entry.labeledAt)
 
   return (
@@ -99,7 +100,7 @@ export function ScoreCard({ entry, defaultExpanded = false }: ScoreCardProps) {
           ) : (
             <div
               className={`h-full rounded-full ${barColor}`}
-              style={{ width: `${entry.score}%` }}
+              style={{ width: `${scoreWidth}%` }}
             />
           )}
         </div>

@@ -1,6 +1,6 @@
 'use client'
 
-import { COMPLETENESS_WEIGHTS } from '@/lib/constants'
+import { COMPLETENESS_WEIGHTS, DEFAULT_TRUSTED_PDS_BONUS } from '@/lib/constants'
 import type { ScoreBreakdown as ScoreBreakdownType } from '@/lib/types'
 
 interface ScoreBreakdownProps {
@@ -9,7 +9,13 @@ interface ScoreBreakdownProps {
   testSignals: string[]
 }
 
-const CRITERIA: Array<{ label: string; field: keyof ScoreBreakdownType; max: number }> = [
+type Criterion = {
+  label: string
+  field: keyof ScoreBreakdownType
+  max: number | ((breakdown: ScoreBreakdownType) => number)
+}
+
+const CRITERIA: Criterion[] = [
   { label: 'Display name', field: 'displayName', max: COMPLETENESS_WEIGHTS.displayName },
   { label: 'Description', field: 'description', max: COMPLETENESS_WEIGHTS.description },
   { label: 'Organization type', field: 'organizationType', max: COMPLETENESS_WEIGHTS.organizationType },
@@ -23,6 +29,11 @@ const CRITERIA: Array<{ label: string; field: keyof ScoreBreakdownType; max: num
   { label: 'Founded date age bonus', field: 'foundedDateAge', max: COMPLETENESS_WEIGHTS.foundedDateAge },
   { label: 'Avatar', field: 'avatar', max: COMPLETENESS_WEIGHTS.avatar },
   { label: 'Banner', field: 'banner', max: COMPLETENESS_WEIGHTS.banner },
+  {
+    label: 'Trusted PDS bonus',
+    field: 'trustedPds',
+    max: (breakdown) => (breakdown.trustedPds ?? 0) > 0 ? breakdown.trustedPds : DEFAULT_TRUSTED_PDS_BONUS,
+  },
 ]
 
 function getBarColor(ratio: number): string {
@@ -41,8 +52,9 @@ export function ScoreBreakdown({ breakdown, validationNotes = [], testSignals }:
 
       {CRITERIA.map(({ label, field, max }) => {
         const value = breakdown[field] ?? 0
-        const ratio = max > 0 ? value / max : 0
-        const widthPct = Math.round(ratio * 100)
+        const maxValue = typeof max === 'function' ? max(breakdown) : max
+        const ratio = maxValue > 0 ? value / maxValue : 0
+        const widthPct = Math.max(0, Math.min(Math.round(ratio * 100), 100))
         const barColor = getBarColor(ratio)
 
         return (
@@ -55,7 +67,7 @@ export function ScoreBreakdown({ breakdown, validationNotes = [], testSignals }:
               />
             </div>
             <span className='text-[11px] text-muted-foreground font-mono w-10 text-right'>
-              {value}/{max}
+              {value}/{maxValue}
             </span>
           </div>
         )
