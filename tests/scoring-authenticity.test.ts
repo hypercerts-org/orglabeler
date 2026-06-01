@@ -47,7 +47,7 @@ test('display-name workflow and test terms fail the authenticity gate', () => {
   for (const displayName of names) {
     const result = evaluateMergedActorAuthenticity(record({ displayName, profileDisplayName: displayName }))
     assert.equal(result.passed, false, displayName)
-    assert.ok(result.signals.includes('Display name contains placeholder text'), displayName)
+    assert.ok(result.testSignals.includes('Display name contains placeholder text'), displayName)
   }
 })
 
@@ -59,7 +59,18 @@ test('display-name workflow checks do not punish longer descriptive words or non
   }))
 
   assert.equal(result.passed, true)
-  assert.deepEqual(result.signals, [])
+  assert.deepEqual(result.testSignals, [])
+  assert.deepEqual(result.validationNotes, [])
+})
+
+test('profile descriptions may mention test words without failing authenticity', () => {
+  const result = evaluateMergedActorAuthenticity(record({
+    profileDescription: 'Uganda Rural Development and Training Programme (URDT) is an organization founded to address the missing link in development programmes by merging truly functional education, consciousness raising, skills training, and rural development interventions with the intent of empowering marginalized people living in rural communities in Uganda. Since 1987, URDT has evolved, applied and tested a rural development methodology based on the principles of the creative process and systems thinking. The organization distributes resources such as water pumps to farmers across multiple sub-counties in Uganda.',
+  }))
+
+  assert.equal(result.passed, true)
+  assert.deepEqual(result.testSignals, [])
+  assert.deepEqual(result.validationNotes, [])
 })
 
 test('display-name embedded-test checks do not punish normal words', () => {
@@ -74,7 +85,8 @@ test('display-name embedded-test checks do not punish normal words', () => {
   for (const displayName of names) {
     const result = evaluateMergedActorAuthenticity(record({ displayName, profileDisplayName: displayName }))
     assert.equal(result.passed, true, displayName)
-    assert.deepEqual(result.signals, [], displayName)
+    assert.deepEqual(result.testSignals, [], displayName)
+    assert.deepEqual(result.validationNotes, [], displayName)
   }
 })
 
@@ -91,7 +103,7 @@ test('placeholder profile website domains fail authenticity checks', () => {
   for (const profileWebsite of urls) {
     const result = evaluateMergedActorAuthenticity(record({ profileWebsite }))
     assert.equal(result.passed, false, profileWebsite)
-    assert.ok(result.signals.includes('Profile website uses placeholder domain'), profileWebsite)
+    assert.ok(result.testSignals.includes('Profile website uses placeholder domain'), profileWebsite)
   }
 })
 
@@ -110,8 +122,37 @@ test('placeholder organization URL domains fail authenticity checks', () => {
       urls: [{ url, label: 'Project docs' }],
     }))
     assert.equal(result.passed, false, url)
-    assert.ok(result.signals.includes('Organization URLs use placeholder domains'), url)
+    assert.ok(result.testSignals.includes('Organization URLs use placeholder domains'), url)
   }
+})
+
+test('malformed optional fields become validation notes rather than test signals', () => {
+  const result = evaluateMergedActorAuthenticity(record({
+    profileWebsite: 'not a url',
+    organizationType: ['placeholder'],
+    urls: [{ url: 'also not a url', label: 'placeholder' }],
+    foundedDate: 'not a date',
+  }))
+
+  assert.equal(result.passed, true)
+  assert.deepEqual(result.testSignals, [])
+  assert.ok(result.validationNotes.includes('Profile website must be a public http(s) URL'))
+  assert.ok(result.validationNotes.includes('Organization type contains placeholder text'))
+  assert.ok(result.validationNotes.includes('Organization URL must be a public http(s) URL'))
+  assert.ok(result.validationNotes.includes('Organization URL labels contain placeholder text'))
+  assert.ok(result.validationNotes.includes('foundedDate is invalid'))
+})
+
+test('short metadata test words become validation notes rather than test signals', () => {
+  const result = evaluateMergedActorAuthenticity(record({
+    organizationType: ['testing'],
+    urls: [{ url: 'https://forest-recovery.example.coop', label: 'test docs' }],
+  }))
+
+  assert.equal(result.passed, true)
+  assert.deepEqual(result.testSignals, [])
+  assert.ok(result.validationNotes.includes('Organization type contains placeholder text'))
+  assert.ok(result.validationNotes.includes('Organization URL labels contain placeholder text'))
 })
 
 test('DID fallback display names are not checked as user-provided display names', () => {
@@ -122,7 +163,8 @@ test('DID fallback display names are not checked as user-provided display names'
   }))
 
   assert.equal(result.passed, true)
-  assert.deepEqual(result.signals, [])
+  assert.deepEqual(result.testSignals, [])
+  assert.deepEqual(result.validationNotes, [])
 })
 
 test('display-name repeated character runs fail authenticity checks', () => {
@@ -132,7 +174,7 @@ test('display-name repeated character runs fail authenticity checks', () => {
   }))
 
   assert.equal(result.passed, false)
-  assert.ok(result.signals.includes('Display name contains repeated characters'))
+  assert.ok(result.testSignals.includes('Display name contains repeated characters'))
 })
 
 test('lorem ipsum anywhere in a description fails authenticity checks', () => {
@@ -141,5 +183,5 @@ test('lorem ipsum anywhere in a description fails authenticity checks', () => {
   }))
 
   assert.equal(result.passed, false)
-  assert.ok(result.signals.includes('Profile description contains placeholder text'))
+  assert.ok(result.testSignals.includes('Profile description contains placeholder text'))
 })

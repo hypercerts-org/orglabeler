@@ -2,6 +2,7 @@ import { HfInference } from '@huggingface/inference'
 import * as config from './config'
 import { HF_POSITIVE_LABEL, updateActivityHfFields, getActivityByDidRkey, getHfClassifiedNonFlagged } from './db'
 import { updateActivity } from './db'
+import { tierForScore } from './scorer'
 
 export interface ContentClassification {
   label: string
@@ -94,12 +95,20 @@ function reclassifyWithHfSignal(did: string, rkey: string, classification: Conte
     ? [...existingSignals, signal]
     : existingSignals
 
+  const tier = tierForScore(row.score, updatedSignals)
+
   updateActivity(did, rkey, {
     score: row.score,
-    tier: row.tier,
+    tier,
     breakdown: row.breakdown,
     testSignals: JSON.stringify(updatedSignals),
   })
+
+  if (tier !== row.tier && _onReclassify) {
+    void _onReclassify(row.uri, tier).catch(err => {
+      console.warn('[hf-classifier] label update failed:', err instanceof Error ? err.message : err)
+    })
+  }
 }
 
 let hf: HfInference | null = null

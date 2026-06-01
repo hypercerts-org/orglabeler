@@ -8,9 +8,9 @@ This fork monitors both `app.certified.actor.profile` and `app.certified.actor.o
 
 | Label | Score | Meaning |
 |-------|-------|---------|
-| ⚠ Likely Test | 0-39 | Placeholder, junk, or obvious test data |
-| ● Standard | 40-69 | A valid organization record with the basics filled in |
-| ✦ High Quality | 70-100 | A complete organization record with several strong details |
+| ⚠ Likely Test | signal-based | Explicit test evidence, such as a configured test PDS or obvious placeholder identity data |
+| ● Standard | 0-69 without test signals | A non-test organization record that does not meet the high-quality threshold |
+| ✦ High Quality | 70+ without test signals | A complete organization record with several strong details |
 
 ## Quick Start
 
@@ -93,7 +93,7 @@ Scores `app.certified.actor.organization` records on 13 completeness signals (10
 
 Trusted PDS scoring uses the actor's resolved PDS host, not the profile website or organization URLs. Actor PDS lookup runs through the durable recompute queue; the first record from an uncached actor may be labeled by content score first, then corrected once the actor DID document is resolved.
 
-Test detection: authenticity checks catch common placeholder strings (`test`, `asdf`, `lorem ipsum`, etc.) and override the score to force ⚠ Likely Test. Operators can also set `TEST_PDS_HOSTS` to force actors from known development PDS hosts into ⚠ Likely Test.
+Test detection is intentionally conservative: hard `testSignals` such as configured `TEST_PDS_HOSTS`, obvious placeholder display names, placeholder domains, or `lorem ipsum` descriptions force ⚠ Likely Test. Softer data-quality issues become `validationNotes` for the dashboard but do not change the tier. Generic words like `test`, `testing`, or `tested` are allowed in profile descriptions, but still show as validation notes in short metadata fields such as organization type or URL labels.
 
 ### URL enrichment
 

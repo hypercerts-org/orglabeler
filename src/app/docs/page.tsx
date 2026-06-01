@@ -17,7 +17,7 @@ const SCORING_CRITERIA = [
   {
     label: 'Description',
     points: COMPLETENESS_WEIGHTS.description,
-    description: 'Awards points when the profile description is present and not obvious test data.',
+    description: 'Awards points when the profile description is present; generic words like test, testing, or tested are allowed in descriptions.',
   },
   {
     label: 'Organization type',
@@ -166,9 +166,9 @@ export default function DocsPage() {
           <li className='flex gap-3'>
             <span className='font-[family-name:var(--font-syne)] font-bold text-foreground shrink-0'>3.</span>
             <span>
-              The scoring engine checks an authenticity gate first. Records with authenticity failures are labeled
-              <ScoreBadge tier='likely-test' /> before completeness scoring begins. Validation notes are shown
-              separately and do not affect tiering. Passing records then receive the 100-point completeness score.
+              The scoring engine separates hard test signals from softer validation notes. Records with test signals
+              are labeled <ScoreBadge tier='likely-test' />. Records without test signals receive the 100-point
+              completeness score and are labeled standard or high-quality from that score.
             </span>
           </li>
           <li className='flex gap-3'>
@@ -186,11 +186,11 @@ export default function DocsPage() {
           Scoring criteria
         </h2>
         <p className='text-sm text-muted-foreground'>
-          Each passing organization record is evaluated on 13 completeness criteria for a maximum of 100 completeness
-          points, plus a configurable actor-PDS trust bonus. The rubric now gives less credit to basic identity fields
+          Each organization record is evaluated on 13 completeness criteria for a maximum of 100 completeness
+          points, plus a configurable actor-PDS trust bonus. The rubric gives less credit to basic identity fields
           and more weight to harder-to-fake credibility signals like website resolution, location, and visual/profile
-          completeness. The authenticity gate runs first, validation notes are informational only, and labels stay
-          attached to the organization record URI.
+          completeness. Hard test signals override the score to likely-test; validation notes are informational only,
+          and labels stay attached to the organization record URI.
         </p>
         <div className='border border-border rounded-lg bg-card overflow-hidden'>
           <table className='w-full text-sm'>
@@ -232,27 +232,29 @@ export default function DocsPage() {
         </div>
 
         <h3 className='font-[family-name:var(--font-syne)] text-sm font-bold mt-4'>
-          Authenticity gate
+          Test signals and validation notes
         </h3>
         <p className='text-sm text-muted-foreground'>
-          Matching any gate failure forces <ScoreBadge tier='likely-test' />. These are authenticity failures, not
-          validation notes, and there are no separate numeric deductions.
+          Matching a hard test signal forces <ScoreBadge tier='likely-test' />. Validation notes are softer data-quality
+          issues shown to operators, but they do not change the tier.
         </p>
         <div className='border border-border rounded-lg bg-card p-4 text-xs text-muted-foreground space-y-1'>
-          <p className='font-medium text-foreground text-xs'>Authenticity gate failure patterns</p>
+          <p className='font-medium text-foreground text-xs'>Hard test signal patterns</p>
           <ul className='space-y-1 pl-3'>
-            <li>• Common junk values: <span className='font-mono bg-secondary rounded px-1'>test</span>, <span className='font-mono bg-secondary rounded px-1'>asdf</span>, <span className='font-mono bg-secondary rounded px-1'>lorem ipsum</span>, <span className='font-mono bg-secondary rounded px-1'>placeholder</span>, <span className='font-mono bg-secondary rounded px-1'>delete me</span>, <span className='font-mono bg-secondary rounded px-1'>ignore</span>, <span className='font-mono bg-secondary rounded px-1'>todo</span>, <span className='font-mono bg-secondary rounded px-1'>foo</span>, <span className='font-mono bg-secondary rounded px-1'>bar</span>, <span className='font-mono bg-secondary rounded px-1'>abc</span>, <span className='font-mono bg-secondary rounded px-1'>wip</span>, <span className='font-mono bg-secondary rounded px-1'>sample</span>, and <span className='font-mono bg-secondary rounded px-1'>example</span>.</li>
-            <li>• Empty-style values: <span className='font-mono bg-secondary rounded px-1'>n/a</span>, <span className='font-mono bg-secondary rounded px-1'>none</span>, <span className='font-mono bg-secondary rounded px-1'>null</span>, <span className='font-mono bg-secondary rounded px-1'>undefined</span>, <span className='font-mono bg-secondary rounded px-1'>blank</span>, <span className='font-mono bg-secondary rounded px-1'>draft</span>, <span className='font-mono bg-secondary rounded px-1'>temp</span>, and <span className='font-mono bg-secondary rounded px-1'>tmp</span>.</li>
-            <li>• Display-name workflow/test terms such as <span className='font-mono bg-secondary rounded px-1'>demo</span>, <span className='font-mono bg-secondary rounded px-1'>dev</span>, <span className='font-mono bg-secondary rounded px-1'>staging</span>, <span className='font-mono bg-secondary rounded px-1'>qa</span>, <span className='font-mono bg-secondary rounded px-1'>e2e</span>, <span className='font-mono bg-secondary rounded px-1'>sandbox</span>, <span className='font-mono bg-secondary rounded px-1'>fixture</span>, <span className='font-mono bg-secondary rounded px-1'>seed data</span>, obvious glued test fixtures like <span className='font-mono bg-secondary rounded px-1'>tobytest</span>, generic names like <span className='font-mono bg-secondary rounded px-1'>org</span>/<span className='font-mono bg-secondary rounded px-1'>org 1</span>/<span className='font-mono bg-secondary rounded px-1'>first org</span>/<span className='font-mono bg-secondary rounded px-1'>new org</span>, <span className='font-mono bg-secondary rounded px-1'>new db</span>, <span className='font-mono bg-secondary rounded px-1'>published</span>, <span className='font-mono bg-secondary rounded px-1'>unpublished</span>, and <span className='font-mono bg-secondary rounded px-1'>changes requested</span>.</li>
-            <li>• Placeholder domains such as <span className='font-mono bg-secondary rounded px-1'>example.com</span>, <span className='font-mono bg-secondary rounded px-1'>example.org</span>, <span className='font-mono bg-secondary rounded px-1'>example.net</span>, and reserved <span className='font-mono bg-secondary rounded px-1'>.test</span>/<span className='font-mono bg-secondary rounded px-1'>.example</span>/<span className='font-mono bg-secondary rounded px-1'>.invalid</span> hostnames fail URL authenticity checks.</li>
-            <li>• Single-word greetings, repeated characters, repeated-character runs in display names, and numeric-only values are also treated as test data.</li>
+            <li>• Actors hosted on configured <span className='font-mono bg-secondary rounded px-1'>TEST_PDS_HOSTS</span>.</li>
+            <li>• Placeholder display names such as <span className='font-mono bg-secondary rounded px-1'>test org</span>, <span className='font-mono bg-secondary rounded px-1'>demo</span>, <span className='font-mono bg-secondary rounded px-1'>dev</span>, <span className='font-mono bg-secondary rounded px-1'>staging</span>, <span className='font-mono bg-secondary rounded px-1'>qa</span>, <span className='font-mono bg-secondary rounded px-1'>e2e</span>, <span className='font-mono bg-secondary rounded px-1'>sandbox</span>, <span className='font-mono bg-secondary rounded px-1'>fixture</span>, obvious glued test fixtures like <span className='font-mono bg-secondary rounded px-1'>tobytest</span>, generic names like <span className='font-mono bg-secondary rounded px-1'>org</span>/<span className='font-mono bg-secondary rounded px-1'>org 1</span>/<span className='font-mono bg-secondary rounded px-1'>first org</span>/<span className='font-mono bg-secondary rounded px-1'>new org</span>, and workflow states like <span className='font-mono bg-secondary rounded px-1'>published</span>, <span className='font-mono bg-secondary rounded px-1'>unpublished</span>, or <span className='font-mono bg-secondary rounded px-1'>changes requested</span>.</li>
+            <li>• Obvious junk descriptions such as <span className='font-mono bg-secondary rounded px-1'>lorem ipsum</span> or a description that is only placeholder text. Generic words like <span className='font-mono bg-secondary rounded px-1'>test</span>, <span className='font-mono bg-secondary rounded px-1'>testing</span>, or <span className='font-mono bg-secondary rounded px-1'>tested</span> are allowed in descriptions.</li>
+            <li>• Placeholder domains such as <span className='font-mono bg-secondary rounded px-1'>example.com</span>, <span className='font-mono bg-secondary rounded px-1'>example.org</span>, <span className='font-mono bg-secondary rounded px-1'>example.net</span>, and reserved <span className='font-mono bg-secondary rounded px-1'>.test</span>/<span className='font-mono bg-secondary rounded px-1'>.example</span>/<span className='font-mono bg-secondary rounded px-1'>.invalid</span> hostnames.</li>
+            <li>• Repeated-character runs in display names.</li>
           </ul>
         </div>
         <div className='border border-border rounded-lg bg-card p-4 text-xs text-muted-foreground space-y-1'>
           <p className='font-medium text-foreground text-xs'>Validation notes</p>
           <p>
-            These are informational only. They can appear when fallback handling keeps usable profile fields and
-            drops malformed optional fields, and they do not imply suspicious activity or affect tiering.
+            These are informational only. They can appear when fallback handling keeps usable profile fields,
+            optional fields are malformed, short metadata fields such as organization type or URL label contain
+            placeholder/test words, or the record has very little metadata. They do not imply suspicious activity
+            or affect tiering.
           </p>
         </div>
       </section>
@@ -262,8 +264,8 @@ export default function DocsPage() {
           Quality tiers
         </h2>
         <p className='text-sm text-muted-foreground'>
-          Scores map to three tiers. Authenticity gate failures override the numeric score and always produce a
-          <ScoreBadge tier='likely-test' /> label. Validation notes do not change the tier.
+          Scores map to standard or high-quality unless a hard test signal is present. Test signals override the
+          numeric score and produce a <ScoreBadge tier='likely-test' /> label. Validation notes do not change the tier.
         </p>
         <div className='grid gap-3 sm:grid-cols-2'>
           {[
@@ -274,13 +276,13 @@ export default function DocsPage() {
             },
             {
               tier: 'standard' as const,
-              range: '40 – 69',
-              detail: 'Decent merged record with some useful metadata, but not full rubric coverage.',
+              range: '0 – 69 without test signals',
+              detail: 'Non-test merged record with anything below the high-quality threshold.',
             },
             {
               tier: 'likely-test' as const,
-              range: '0 – 39 or gate failures',
-              detail: 'Contains authenticity gate failures, or falls below the standard threshold.',
+              range: 'test signals only',
+              detail: 'Contains hard test evidence, such as a configured test PDS, placeholder display name, or placeholder domain.',
             },
           ].map(({ tier, range, detail }) => (
             <div key={tier} className='border border-border rounded-lg bg-card p-4 space-y-2'>

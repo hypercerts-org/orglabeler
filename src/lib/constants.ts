@@ -1,8 +1,7 @@
 import type { LabelDefinition } from './types'
 
 type RuntimeQualityTier = 'likely-test' | 'standard' | 'high-quality'
-
-export const AUTHENTICITY_FAILURE_TIER: RuntimeQualityTier = 'likely-test'
+type ScoreBasedQualityTier = Exclude<RuntimeQualityTier, 'likely-test'>
 
 // Shared time unit for score boundaries.
 export const MS_PER_DAY = 24 * 60 * 60 * 1000
@@ -39,11 +38,12 @@ export const COMPLETENESS_WEIGHTS = {
   banner: 10,
 } as const
 
-// Final score bands are intentionally coarse. High-quality is open-ended
-// because configured bonuses can raise the final score above 100 completeness points.
-export const SCORE_THRESHOLDS: Record<RuntimeQualityTier, { min: number; max: number }> = {
-  'likely-test': { min: 0, max: 39 },
-  standard: { min: 40, max: 69 },
+// Final score bands are intentionally coarse. Likely-test is signal-based:
+// records without hard test evidence default to standard until they meet the
+// high-quality threshold. High-quality is open-ended because configured bonuses
+// can raise the final score above 100 completeness points.
+export const SCORE_THRESHOLDS: Record<ScoreBasedQualityTier, { min: number; max: number }> = {
+  standard: { min: 0, max: 69 },
   'high-quality': { min: 70, max: Number.POSITIVE_INFINITY },
 }
 
@@ -65,10 +65,16 @@ export const DEFAULT_TRUSTED_PDS_HOSTS = ['certified.one', 'gainforest.id'] as c
 /** Default score points added when an actor is hosted on a trusted PDS. */
 export const DEFAULT_TRUSTED_PDS_BONUS = 10
 
-export const TEST_PATTERNS: RegExp[] = [
-  // Word-boundary "test" — catches "Another Test", "Test Contributors", "This is testing", "test 123"
+/**
+ * Test-word patterns are hard evidence in short identity fields like display
+ * names, but too common for free-form descriptions.
+ */
+export const TEST_WORD_PATTERNS: RegExp[] = [
   /\btest(ing|ed|er|s)?\b/i,
+]
 
+/** Obvious placeholder strings that can be checked outside descriptions. */
+export const TEST_PATTERNS: RegExp[] = [
   // Common junk prefixes and phrases.
   /^asdf/i, /\blorem ipsum\b/i, /^placeholder/i, /^delete me/i, /^ignore/i, /^zzz/i,
 
@@ -102,11 +108,37 @@ export const AUTHENTICITY_TEXT_PATTERNS: RegExp[] = [
   /^unlisted$/i,
 ]
 
+/** Placeholder patterns for short metadata fields, where test words are meaningful signals. */
+export const SHORT_FIELD_AUTHENTICITY_TEXT_PATTERNS: RegExp[] = [
+  ...TEST_WORD_PATTERNS,
+  ...AUTHENTICITY_TEXT_PATTERNS,
+]
+
+/**
+ * Placeholder patterns for descriptions. Generic test words are intentionally
+ * excluded because real organization descriptions often mention tests, testing,
+ * or tested methods.
+ */
+export const DESCRIPTION_AUTHENTICITY_TEXT_PATTERNS: RegExp[] = [
+  /\blorem ipsum\b/i,
+  /^asdf/i,
+  /^placeholder$/i,
+  /^delete me$/i,
+  /^ignore$/i,
+  /^todo$/i,
+  /^n\/a$/i,
+  /^none$/i,
+  /^null$/i,
+  /^undefined$/i,
+  /^blank$/i,
+]
+
 /**
  * Extra authenticity patterns for display names, where workflow/test labels are
  * much stronger evidence than the same words appearing in longer descriptions.
  */
 export const DISPLAY_NAME_AUTHENTICITY_TEXT_PATTERNS: RegExp[] = [
+  ...TEST_WORD_PATTERNS,
   ...AUTHENTICITY_TEXT_PATTERNS,
   /(?:^|[^\p{Letter}\p{Number}])(?:demo|dev|staging|qa|e2e|sandbox|fixture)(?:$|[^\p{Letter}\p{Number}])/iu,
   /^tobytest\d*$/i,
@@ -122,7 +154,7 @@ export const DISPLAY_NAME_AUTHENTICITY_TEXT_PATTERNS: RegExp[] = [
 /** Reserved example domains that should never count as organization evidence. */
 export const PLACEHOLDER_DOMAINS = ['example.com', 'example.net', 'example.org'] as const
 
-/** Reserved non-production TLDs that should fail the authenticity gate. */
+/** Reserved non-production TLDs that should produce a hard test signal. */
 export const PLACEHOLDER_TLDS = ['example', 'invalid', 'test'] as const
 
 export const LABEL_LIMIT = 1
