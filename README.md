@@ -72,7 +72,7 @@ The labeler auto-detects the PDS for non-bsky.social accounts via DID document r
 
 ## Scoring
 
-Scores `app.certified.actor.organization` records on 13 completeness signals (100 points total):
+Scores `app.certified.actor.organization` records on 13 completeness signals (100 points total), plus a configurable actor-PDS trust bonus:
 
 | Signal | Max Points | What it checks |
 |--------|-----------|----------------|
@@ -89,8 +89,11 @@ Scores `app.certified.actor.organization` records on 13 completeness signals (10
 | Founded Date Age | 5 | Founded date is at least one year old |
 | Avatar | 10 | Has an avatar image |
 | Banner | 10 | Has a banner image |
+| Trusted PDS Bonus | configurable, default 10 | Actor DID resolves to a PDS host in `TRUSTED_PDS_HOSTS` (`certified.one` and `gainforest.id` by default) |
 
-Test detection: authenticity checks catch common placeholder strings (`test`, `asdf`, `lorem ipsum`, etc.) and override the score to force ⚠ Likely Test. Operators can also set `TEST_PDS_HOSTS` to force actors from known development PDS hosts into ⚠ Likely Test. Actor PDS lookup runs through the durable recompute queue; the first record from an uncached actor may be labeled by content score first, then corrected once the actor DID document is resolved.
+Trusted PDS scoring uses the actor's resolved PDS host, not the profile website or organization URLs. Actor PDS lookup runs through the durable recompute queue; the first record from an uncached actor may be labeled by content score first, then corrected once the actor DID document is resolved.
+
+Test detection: authenticity checks catch common placeholder strings (`test`, `asdf`, `lorem ipsum`, etc.) and override the score to force ⚠ Likely Test. Operators can also set `TEST_PDS_HOSTS` to force actors from known development PDS hosts into ⚠ Likely Test.
 
 ### URL enrichment
 
@@ -129,6 +132,8 @@ When `TEST_PDS_HOSTS` is configured, URL enrichment is PDS-aware: it defers URL 
 | `TAP_URL` | required | URL of the separate Tap service (no localhost default) |
 | `TAP_ADMIN_PASSWORD` | empty | App-side password for Tap admin auth; must match the Tap service when auth is enabled |
 | `TEST_PDS_HOSTS` | empty | Comma-separated PDS hosts whose actors should always be labeled `likely-test`; when set, URL enrichment waits for actor PDS resolution and skips matching test PDS hosts |
+| `TRUSTED_PDS_HOSTS` | `certified.one,gainforest.id` | Comma-separated PDS hosts whose actors receive the trusted-PDS score bonus |
+| `TRUSTED_PDS_BONUS` | `10` | Score points added when an actor's resolved PDS host matches `TRUSTED_PDS_HOSTS`; set to `0` to disable the bonus |
 | `ACTIVITY_DB_PATH` | `activity-log.db` | Activity log database path |
 | `URL_ENRICHMENT_ENABLED` | `true` | Enables async URL checks through the detachable `url_checks` cache |
 | `URL_CHECK_TIMEOUT_MS` | `4000` | Timeout for one URL resolution attempt |

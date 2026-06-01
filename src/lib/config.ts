@@ -1,4 +1,5 @@
-import { parseTestPdsHosts } from './pds-utils'
+import { DEFAULT_TRUSTED_PDS_BONUS, DEFAULT_TRUSTED_PDS_HOSTS } from './constants'
+import { parsePdsHosts, parseTestPdsHosts } from './pds-utils'
 
 export const DID = process.env.DID ?? ''
 export const SIGNING_KEY = process.env.SIGNING_KEY ?? ''
@@ -22,6 +23,10 @@ export const HF_MODEL = 'facebook/bart-large-mnli'
 export const HYPERSCAN_RECORD_URL_BASE = process.env.HYPERSCAN_RECORD_URL_BASE ?? 'https://hyperscan.dev/data'
 /** Comma-separated PDS hosts whose actors should always be labeled likely-test. */
 export const TEST_PDS_HOSTS = parseTestPdsHosts(process.env.TEST_PDS_HOSTS ?? '')
+/** PDS hosts whose actors receive the configured trusted-operator score bonus. */
+export const TRUSTED_PDS_HOSTS = parsePdsHosts(process.env.TRUSTED_PDS_HOSTS ?? DEFAULT_TRUSTED_PDS_HOSTS.join(','))
+/** Score points added when an actor's resolved PDS host matches TRUSTED_PDS_HOSTS. */
+export const TRUSTED_PDS_BONUS = nonNegativeIntegerEnv('TRUSTED_PDS_BONUS', DEFAULT_TRUSTED_PDS_BONUS)
 
 function integerEnv(name: string, fallback: number): number {
   const value = process.env[name]
@@ -29,6 +34,14 @@ function integerEnv(name: string, fallback: number): number {
 
   const parsed = Number(value)
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+
+function nonNegativeIntegerEnv(name: string, fallback: number): number {
+  const value = process.env[name]
+  if (value === undefined || value.trim() === '') return fallback
+
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback
 }
 
 /** Enables the detachable URL enrichment worker; set to false to keep scoring fully provisional. */

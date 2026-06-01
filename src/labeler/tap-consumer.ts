@@ -1,6 +1,6 @@
 import { Tap, SimpleIndexer } from '@atproto/tap'
 import type { TapChannel } from '@atproto/tap'
-import { TAP_URL, TAP_ADMIN_PASSWORD, ACTIVITY_COLLECTION } from '../lib/config'
+import { TAP_URL, TAP_ADMIN_PASSWORD, ACTIVITY_COLLECTION, TRUSTED_PDS_BONUS, TRUSTED_PDS_HOSTS } from '../lib/config'
 import { cachedActorPdsHostForScoring, ACTOR_PDS_CACHE_TTL_MS } from '../lib/actor-pds-policy'
 import { applyPdsTestOverride } from '../lib/pds-test-override'
 import { normalizePdsHostFromUrl } from '../lib/pds-utils'
@@ -213,6 +213,9 @@ export async function recomputeLabeledOrganizationRow(did: string): Promise<Orga
   })
   scoringInput.urlResolution = getUrlResolutionMapForDid(did)
   const actorPdsHost = cachedActorPdsHostForScoring(did)
+  scoringInput.actorPdsHost = actorPdsHost
+  scoringInput.trustedPdsHosts = TRUSTED_PDS_HOSTS
+  scoringInput.trustedPdsBonus = TRUSTED_PDS_BONUS
   const merged = getMergedActorDisplay({
     did,
     profile: profile?.payload ?? null,

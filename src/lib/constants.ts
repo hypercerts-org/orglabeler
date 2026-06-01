@@ -39,11 +39,12 @@ export const COMPLETENESS_WEIGHTS = {
   banner: 10,
 } as const
 
-// Final score bands are intentionally coarse and should stay readable here.
+// Final score bands are intentionally coarse. High-quality is open-ended
+// because configured bonuses can raise the final score above 100 completeness points.
 export const SCORE_THRESHOLDS: Record<RuntimeQualityTier, { min: number; max: number }> = {
   'likely-test': { min: 0, max: 39 },
   standard: { min: 40, max: 69 },
-  'high-quality': { min: 70, max: 100 },
+  'high-quality': { min: 70, max: Number.POSITIVE_INFINITY },
 }
 
 // Founded-date age scoring is binary: the 5-point bonus applies once the
@@ -55,8 +56,14 @@ export const FOUNDED_DATE_AGE_BUCKETS = {
   },
 } as const
 
-// Declared raw total for the completeness model.
+// Declared raw total for the completeness model before any configured bonuses.
 export const COMPLETENESS_WEIGHT_TOTAL = 100
+
+/** Default PDS hosts that receive the trusted-operator score bonus. */
+export const DEFAULT_TRUSTED_PDS_HOSTS = ['certified.one', 'gainforest.id'] as const
+
+/** Default score points added when an actor is hosted on a trusted PDS. */
+export const DEFAULT_TRUSTED_PDS_BONUS = 10
 
 export const TEST_PATTERNS: RegExp[] = [
   // Word-boundary "test" — catches "Another Test", "Test Contributors", "This is testing", "test 123"

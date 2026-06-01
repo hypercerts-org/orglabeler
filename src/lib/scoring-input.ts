@@ -27,6 +27,12 @@ export interface MergedScoringInput {
   organizationType: string[]
   urls: MergedOrganizationUrlItem[]
   urlResolution?: UrlResolutionMap
+  /** Normalized actor PDS host from DID resolution, when the durable cache knows it. */
+  actorPdsHost?: string | null
+  /** Exact-match PDS hosts that should receive the trusted-PDS score bonus. */
+  trustedPdsHosts?: readonly string[]
+  /** Number of points to add when actorPdsHost matches trustedPdsHosts. */
+  trustedPdsBonus?: number
   location: OrganizationRecord['location'] | null
   foundedDate: string | null
 }

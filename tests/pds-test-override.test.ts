@@ -21,6 +21,7 @@ function scoreResult(): ScoreResult {
       foundedDateAge: 0,
       avatar: 5,
       banner: 0,
+      trustedPds: 0,
     },
     testSignals: [],
   }

@@ -1,5 +1,5 @@
 import { ScoreBadge } from '@/components/ScoreBadge'
-import { COMPLETENESS_WEIGHTS } from '@/lib/constants'
+import { COMPLETENESS_WEIGHTS, DEFAULT_TRUSTED_PDS_BONUS, DEFAULT_TRUSTED_PDS_HOSTS } from '@/lib/constants'
 
 const getLabelerBaseUrl = () => (process.env.NEXT_PUBLIC_LABELER_ENDPOINT ?? '').replace(/\/$/, '')
 
@@ -73,6 +73,11 @@ const SCORING_CRITERIA = [
     label: 'Banner',
     points: COMPLETENESS_WEIGHTS.banner,
     description: 'Awards meaningful points when the profile has a banner.',
+  },
+  {
+    label: 'Trusted PDS bonus',
+    points: DEFAULT_TRUSTED_PDS_BONUS,
+    description: `Awards the configured trusted-PDS bonus when the actor DID resolves to ${DEFAULT_TRUSTED_PDS_HOSTS.join(' or ')} by default.`,
   },
 ]
 
@@ -181,10 +186,11 @@ export default function DocsPage() {
           Scoring criteria
         </h2>
         <p className='text-sm text-muted-foreground'>
-          Each passing organization record is evaluated on 13 completeness criteria for a maximum of 100 points. The
-          rubric now gives less credit to basic identity fields and more weight to harder-to-fake credibility signals
-          like website resolution, location, and visual/profile completeness. The authenticity gate runs first,
-          validation notes are informational only, and labels stay attached to the organization record URI.
+          Each passing organization record is evaluated on 13 completeness criteria for a maximum of 100 completeness
+          points, plus a configurable actor-PDS trust bonus. The rubric now gives less credit to basic identity fields
+          and more weight to harder-to-fake credibility signals like website resolution, location, and visual/profile
+          completeness. The authenticity gate runs first, validation notes are informational only, and labels stay
+          attached to the organization record URI.
         </p>
         <div className='border border-border rounded-lg bg-card overflow-hidden'>
           <table className='w-full text-sm'>
@@ -218,7 +224,7 @@ export default function DocsPage() {
                 <td className='px-4 py-2.5 font-[family-name:var(--font-syne)] font-bold text-xs'>Total</td>
                 <td />
                 <td className='px-4 py-2.5 text-right'>
-                  <span className='font-mono text-xs font-bold'>100</span>
+                  <span className='font-mono text-xs font-bold'>100 + trusted PDS bonus</span>
                 </td>
               </tr>
             </tbody>
@@ -263,7 +269,7 @@ export default function DocsPage() {
           {[
             {
               tier: 'high-quality' as const,
-              range: '70 – 100',
+              range: '70+',
               detail: 'Strong merged profile + organization record with broad completeness across the rubric.',
             },
             {

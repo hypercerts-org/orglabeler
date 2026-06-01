@@ -1,4 +1,4 @@
-import { TEST_PDS_HOSTS } from './config'
+import { TEST_PDS_HOSTS, TRUSTED_PDS_BONUS, TRUSTED_PDS_HOSTS } from './config'
 import {
   enqueueRecomputeJob,
   getActorPdsCache,
@@ -18,9 +18,19 @@ export function testPdsDetectionEnabled(): boolean {
   return TEST_PDS_HOSTS.length > 0
 }
 
-/** Enqueues actor PDS resolution when TEST_PDS_HOSTS is configured. */
+/** Returns true when trusted-PDS scoring can affect the final score. */
+export function trustedPdsBonusEnabled(): boolean {
+  return TRUSTED_PDS_HOSTS.length > 0 && TRUSTED_PDS_BONUS > 0
+}
+
+/** Returns true when actor PDS lookup is needed for any scoring policy. */
+export function actorPdsResolutionEnabled(): boolean {
+  return testPdsDetectionEnabled() || trustedPdsBonusEnabled()
+}
+
+/** Enqueues actor PDS resolution when any actor-PDS scoring policy is configured. */
 export function enqueueActorPdsResolution(did: string, reason: string, delayMs = 0): void {
-  if (!testPdsDetectionEnabled()) return
+  if (!actorPdsResolutionEnabled()) return
 
   recordActorPdsPending(did, ACTOR_PDS_PENDING_TTL_MS)
   enqueueRecomputeJob('resolve-actor-pds', did, {
@@ -31,10 +41,11 @@ export function enqueueActorPdsResolution(did: string, reason: string, delayMs =
 
 /**
  * Returns the best cached actor PDS host for scoring. Stale hosts are still used
- * for the current score, but a refresh is queued so later recomputes can correct labels.
+ * for the current score, but a refresh is queued so later recomputes can correct
+ * trusted-PDS bonuses or test-PDS labels.
  */
 export function cachedActorPdsHostForScoring(did: string): string | null {
-  if (!testPdsDetectionEnabled()) return null
+  if (!actorPdsResolutionEnabled()) return null
 
   const cache = getActorPdsCache(did)
   if (!cache || isActorPdsCacheStale(cache)) {
