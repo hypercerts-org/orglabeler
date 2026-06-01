@@ -1,30 +1,14 @@
 import type { LabelTier, ScoreBreakdown, ScoreResult } from './types'
 import type { MergedScoringInput, UrlResolutionMap, UrlResolutionState } from './scoring-input'
-import { AUTHENTICITY_FAILURE_TIER, COMPLETENESS_WEIGHTS, FOUNDED_DATE_AGE_BUCKETS, SCORE_THRESHOLDS } from './constants'
+import { COMPLETENESS_WEIGHTS, FOUNDED_DATE_AGE_BUCKETS, SCORE_THRESHOLDS } from './constants'
 import { evaluateMergedActorAuthenticity } from './scoring-authenticity'
 import { validateOrganizationLocationRef } from './location-utils'
 import { isConfiguredPdsHost } from './pds-utils'
 import { displayNameMatchesWebsiteDomain, normalizePublicWebsiteUrl } from './website-utils'
 
+/** Scored activity result plus informational validation notes for dashboard display. */
 export type ScoreResultWithValidationNotes = ScoreResult & {
   validationNotes: string[]
-}
-
-const ZERO_BREAKDOWN: ScoreBreakdown = {
-  displayName: 0,
-  description: 0,
-  organizationType: 0,
-  websitePresent: 0,
-  websiteResolves: 0,
-  websiteMatchesName: 0,
-  organizationUrlsPresent: 0,
-  organizationUrlsResolve: 0,
-  locationValid: 0,
-  foundedDateValid: 0,
-  foundedDateAge: 0,
-  avatar: 0,
-  banner: 0,
-  trustedPds: 0,
 }
 
 // Organization records do not currently cap the number of URL refs in the
@@ -143,19 +127,17 @@ export function scoreTrustedPdsBonus(
   return isConfiguredPdsHost(actorPdsHost, trustedPdsHosts) ? trustedPdsBonus : 0
 }
 
+/**
+ * Scores a merged actor profile and organization record. Hard test evidence
+ * becomes testSignals and only affects the derived tier; validation notes remain
+ * informational and do not force likely-test.
+ */
 export async function scoreActivity(record: MergedScoringInput): Promise<ScoreResultWithValidationNotes> {
   const authenticity = evaluateMergedActorAuthenticity(record)
-  const validationNotes = record.validationNotes ?? []
-
-  if (!authenticity.passed) {
-    return {
-      totalScore: 0,
-      tier: AUTHENTICITY_FAILURE_TIER,
-      breakdown: ZERO_BREAKDOWN,
-      testSignals: authenticity.signals,
-      validationNotes,
-    }
-  }
+  const validationNotes = Array.from(new Set([
+    ...(record.validationNotes ?? []),
+    ...authenticity.validationNotes,
+  ]))
 
   const websiteResolves = scoreWebsiteResolves(record.profileWebsite, record.urlResolution)
   const organizationUrlsResolve = scoreOrganizationUrlsResolve(record.urls, record.urlResolution)
@@ -193,24 +175,25 @@ export async function scoreActivity(record: MergedScoringInput): Promise<ScoreRe
 
   const rawScore = Object.values(breakdown).reduce((sum, value) => sum + value, 0)
   const totalScore = rawScore
-  const tier = tierForScore(totalScore)
+  const tier = tierForScore(totalScore, authenticity.testSignals)
 
   return {
     totalScore,
     tier,
     breakdown,
-    testSignals: [],
+    testSignals: authenticity.testSignals,
     validationNotes,
   }
 }
 
+/** Returns the runtime label tier from score plus hard test evidence. */
 export function tierForScore(score: number, testSignals: string[] = []): LabelTier {
   if (testSignals.length > 0) return 'likely-test'
   if (score >= SCORE_THRESHOLDS['high-quality'].min) return 'high-quality'
-  if (score >= SCORE_THRESHOLDS.standard.min) return 'standard'
-  return 'likely-test'
+  return 'standard'
 }
 
+/** Returns the AT Protocol label identifier for a runtime tier. */
 export function labelIdentifierForTier(tier: LabelTier): string {
   return tier
 }

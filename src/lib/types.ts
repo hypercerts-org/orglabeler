@@ -92,7 +92,7 @@ export interface ScoreResult {
   totalScore: number       // final score: 0-100 completeness plus configured bonuses
   tier: LabelTier
   breakdown: ScoreBreakdown
-  testSignals: string[]    // reasons flagged as test data
+  testSignals: string[]    // hard evidence that forces the likely-test label
 }
 
 export interface ScoreBreakdown {

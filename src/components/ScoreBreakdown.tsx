@@ -47,7 +47,7 @@ export function ScoreBreakdown({ breakdown, validationNotes = [], testSignals }:
   return (
     <div>
       <p className='mb-2 text-[11px] text-muted-foreground'>
-        Authenticity gate failures are checked before completeness scoring.
+        Hard test signals override tiering; validation notes are informational only.
       </p>
 
       {CRITERIA.map(({ label, field, max }) => {
@@ -137,7 +137,7 @@ export function ScoreBreakdown({ breakdown, validationNotes = [], testSignals }:
               <circle cx='6' cy='8.5' r='0.5' fill='currentColor' className='text-rose-700 dark:text-rose-400' />
             </svg>
             <span className='text-[11px] font-medium text-rose-700 dark:text-rose-400'>
-              Authenticity gate failed
+              Hard test signal
             </span>
           </div>
           {testSignals.map((signal, i) => (
