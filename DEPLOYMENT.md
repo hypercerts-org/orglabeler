@@ -49,11 +49,11 @@ The direct Caddy route is required for `subscribeLabels`, because it is a WebSoc
 
 ### Required for first-time labeler setup / label sync
 
-- `BSKY_IDENTIFIER` — labeler account handle, for example `orglabeler.certified.one`
-- `BSKY_PASSWORD` — labeler account password or app password
+- `LABELER_IDENTIFIER` — labeler account identifier, for example `orglabeler.certified.one`
+- `LABELER_PASSWORD` — labeler account password or app password
 - `PDS_URL` — optional override for the labeler account PDS; setup normally resolves this from the DID document
 
-Use these with `npm run setup` and `npm run set-labels` when registering the labeler account and label definitions. The labeler account handle is the signing source; `NEXT_PUBLIC_LABELER_ENDPOINT` is the hosted app endpoint and may be a different domain.
+Use these with `npm run setup` and `npm run set-labels` when registering the labeler account and label definitions. The labeler account identifier is the signing source; `NEXT_PUBLIC_LABELER_ENDPOINT` is the hosted app endpoint and may be a different domain.
 
 ### SQLite paths
 

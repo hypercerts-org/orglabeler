@@ -1,5 +1,5 @@
 #!/usr/bin/env tsx
-// Run with: npx tsx src/labeler/setup.ts <handle> <password> [labeler-endpoint] [--token PLC_TOKEN]
+// Run with: npx tsx src/labeler/setup.ts <labeler-identifier> <password> [labeler-endpoint] [--token PLC_TOKEN]
 // Or: npm run setup -- orglabeler.certified.one mypassword https://orglabeler.hypercerts.dev
 
 import { plcRequestToken, plcSetupLabeler } from '@skyware/labeler/scripts'
@@ -13,19 +13,19 @@ import { resolvePds } from '../lib/resolve-pds'
 
 // --- Arg / env parsing ---
 
-const handle = process.argv[2] || process.env.BSKY_IDENTIFIER || ""
-const password = process.argv[3] || process.env.BSKY_PASSWORD || ""
+const identifier = process.argv[2] || process.env.LABELER_IDENTIFIER || ""
+const password = process.argv[3] || process.env.LABELER_PASSWORD || ""
 
-if (!handle || !password) {
-  console.error("Usage: npx tsx src/labeler/setup.ts <handle> <password> [labeler-endpoint] [--token PLC_TOKEN]")
-  console.error("  Or set BSKY_IDENTIFIER and BSKY_PASSWORD env vars.")
+if (!identifier || !password) {
+  console.error("Usage: npx tsx src/labeler/setup.ts <labeler-identifier> <password> [labeler-endpoint] [--token PLC_TOKEN]")
+  console.error("  Or set LABELER_IDENTIFIER and LABELER_PASSWORD env vars.")
   process.exit(1)
 }
 
 const labelerEndpoint =
   process.argv[4] ||
   process.env.NEXT_PUBLIC_LABELER_ENDPOINT ||
-  `https://labeler.${handle}`
+  `https://labeler.${identifier}`
 
 // Find --token flag or use 5th positional arg or PLC_TOKEN env var
 const existingToken = (() => {
@@ -35,7 +35,7 @@ const existingToken = (() => {
 })()
 
 console.log(`\nLabeler endpoint: ${labelerEndpoint}`)
-console.log(`Account:          ${handle}\n`)
+console.log(`Account:          ${identifier}\n`)
 
 // --- Helpers ---
 
@@ -116,18 +116,18 @@ async function main() {
   const signingKeyHex = Buffer.from(privateKeyBytes).toString("hex")
   console.log(`  Key generated (${signingKeyHex.slice(0, 8)}...)\n`)
 
-  // Step 1.5: Resolve PDS from handle
+  // Step 1.5: Resolve PDS from the labeler account identifier
   console.log("Resolving account PDS...")
   let did = ""
   let pdsUrl = ""
   try {
-    const resolved = await resolvePds(handle)
+    const resolved = await resolvePds(identifier)
     did = resolved.did
     pdsUrl = resolved.pds
     console.log(`  DID: ${did}`)
     console.log(`  PDS: ${pdsUrl}\n`)
   } catch (err) {
-    console.error("  ✗ Failed to resolve handle. Check that the handle exists.")
+    console.error("  ✗ Failed to resolve labeler account identifier. Check that the account exists.")
     console.error("  Error:", err)
     process.exit(1)
   }
@@ -138,10 +138,10 @@ async function main() {
     // Step 2: Request PLC token (sends email)
     console.log("Requesting PLC operation token (this sends a confirmation email)...")
     try {
-      await plcRequestToken({ identifier: handle, password, pds: pdsUrl })
+      await plcRequestToken({ identifier, password, pds: pdsUrl })
       console.log("  ✓ Token requested.\n")
     } catch (err) {
-      console.error("  ✗ Failed to request PLC token. Check your handle and password.")
+      console.error("  ✗ Failed to request PLC token. Check your labeler account identifier and password.")
       console.error("  Error:", err)
       process.exit(1)
     }
@@ -162,7 +162,7 @@ async function main() {
   console.log("\nSetting up labeler on PLC directory...")
   try {
     await plcSetupLabeler({
-      identifier: handle,
+      identifier,
       password,
       pds: pdsUrl,
       plcToken,
@@ -190,7 +190,7 @@ async function main() {
   }))
 
   try {
-    await declareLabeler({ identifier: handle, password, pds: pdsUrl }, labelDefs, true)
+    await declareLabeler({ identifier, password, pds: pdsUrl }, labelDefs, true)
     for (const label of LABELS) {
       console.log(`  ✓ ${label.identifier}: ${label.locales[0]?.name}`)
     }
@@ -205,8 +205,8 @@ async function main() {
   // Step 6: Write .env (preserve existing values, update/add our keys)
   const envPath = ".env"
   const updates: Record<string, string> = {
-    BSKY_IDENTIFIER: handle,
-    BSKY_PASSWORD: password,
+    LABELER_IDENTIFIER: identifier,
+    LABELER_PASSWORD: password,
     SIGNING_KEY: signingKeyHex,
     NEXT_PUBLIC_LABELER_ENDPOINT: labelerEndpoint,
     PDS_URL: pdsUrl,

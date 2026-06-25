@@ -48,11 +48,11 @@ Usually needed for setup/sync:
 
 | Variable | Description |
 |----------|-------------|
-| `BSKY_IDENTIFIER` | Labeler account handle, for example `orglabeler.certified.one` |
-| `BSKY_PASSWORD` | Labeler account password or app password |
+| `LABELER_IDENTIFIER` | Labeler account identifier, for example `orglabeler.certified.one` |
+| `LABELER_PASSWORD` | Labeler account password or app password |
 | `PDS_URL` | Optional labeler account PDS override; setup normally resolves it from the DID document |
 
-The labeler account handle is the signing source. `NEXT_PUBLIC_LABELER_ENDPOINT` is the hosted app endpoint and may be a different domain.
+The labeler account identifier is the signing source. `NEXT_PUBLIC_LABELER_ENDPOINT` is the hosted app endpoint and may be a different domain.
 
 Storage:
 

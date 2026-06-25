@@ -16,7 +16,7 @@ This fork monitors both `app.certified.actor.profile` and `app.certified.actor.o
 
 ### Prerequisites
 - Node.js 22+
-- A Bluesky/AT Protocol account dedicated to the labeler
+- An AT Protocol account dedicated to the labeler
 
 ### Setup
 ```bash
@@ -24,7 +24,7 @@ git clone <repo>
 cd orglabeler
 npm install
 
-# The first argument is the labeler account handle; the final argument is the public app/labeler endpoint.
+# The first argument is the labeler account identifier; the final argument is the public app/labeler endpoint.
 npm run setup -- orglabeler.certified.one your-password https://orglabeler.hypercerts.dev
 ```
 
@@ -65,7 +65,7 @@ The Tap service listens to both `app.certified.actor.profile` and `app.certified
 
 The Next.js dashboard reads from the configured `ACTIVITY_DB_PATH`.
 
-The labeler auto-detects the PDS for non-bsky.social accounts via DID document resolution, so it works across any AT Protocol PDS.
+The labeler auto-detects the account PDS via DID document resolution, so it works across any AT Protocol PDS.
 
 ## Scoring
 
@@ -124,8 +124,8 @@ The code defaults are shown below. `.env.example` uses local SQLite paths for de
 |----------|---------|-------------|
 | `DID` | (set by setup; required) | Labeler account DID |
 | `SIGNING_KEY` | (set by setup; required) | Private key material used by `@skyware/labeler` to sign labels |
-| `BSKY_IDENTIFIER` | (set by setup) | Labeler account handle for setup and label definition updates |
-| `BSKY_PASSWORD` | (set by setup) | Labeler account password or app password |
+| `LABELER_IDENTIFIER` | (set by setup) | Labeler account identifier for setup and label definition updates |
+| `LABELER_PASSWORD` | (set by setup) | Labeler account password or app password |
 | `PDS_URL` | (auto-detected by setup) | PDS endpoint URL for the labeler account |
 | `NEXT_PUBLIC_LABELER_ENDPOINT` | empty | Public HTTPS base URL for the dashboard and labeler XRPC endpoint, for example `https://orglabeler.hypercerts.dev` |
 | `NEXT_PUBLIC_SITE_URL` | `VERCEL_URL` or `http://localhost:3000` | Dashboard metadata base URL |
@@ -163,7 +163,7 @@ Tap runtime settings belong on the Tap service. If the Tap service sets `TAP_ADM
 
 Deploy the app service and Tap as separate services. The app service runs the dashboard plus labeler backend and connects to Tap over `TAP_URL`; Tap owns its own database, volume, lifecycle, and any Tap-specific auth settings.
 
-Set `NEXT_PUBLIC_LABELER_ENDPOINT` to the public app URL, for example `https://orglabeler.hypercerts.dev`. The labeler account handle can still be `orglabeler.certified.one`; that handle is the signing source, not necessarily the app endpoint.
+Set `NEXT_PUBLIC_LABELER_ENDPOINT` to the public app URL, for example `https://orglabeler.hypercerts.dev`. The labeler account identifier can still be `orglabeler.certified.one`; that account is the signing source, not necessarily the app endpoint.
 
 The production app uses Caddy as the front door. Caddy routes public AT Protocol XRPC label methods directly to the labeler process and everything else to Next.js:
 

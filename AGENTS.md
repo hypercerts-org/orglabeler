@@ -46,3 +46,19 @@ npm run build           # Verify Next.js build passes
 npm run test            # Run Node test suite
 npm run reset           # Clear local databases for fresh start
 ```
+
+## Documentation Maintenance
+
+When behavior, configuration, deployment, scripts, or operator workflow changes, check whether the relevant docs need updates in the same change.
+
+Current docs to consider:
+
+- `README.md` — project overview, setup, scripts, env vars, production shape
+- `DEPLOYMENT.md` — generic hosted deployment guidance
+- `RAILWAY.md` — Railway-specific deployment guidance
+- `AGENTS.md` — agent-facing architecture, workflow, and maintenance instructions
+- `src/app/docs/page.tsx` — dashboard documentation shown in the app
+- `.agents/skills/orglabeler/SKILL.md` — downstream consumer integration guidance
+- `.env.example` — documented environment variable defaults/examples
+
+If a new documentation file is introduced, add it to this list and include when it should be checked.
