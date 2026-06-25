@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 // Run with: npx tsx src/labeler/setup.ts <handle> <password> [labeler-endpoint] [--token PLC_TOKEN]
-// Or: npm run setup -- satyam2.climateai.org mypassword https://labeler.example.com
+// Or: npm run setup -- orglabeler.certified.one mypassword https://orglabeler.hypercerts.dev
 
 import { plcRequestToken, plcSetupLabeler } from '@skyware/labeler/scripts'
 import 'dotenv/config'
@@ -111,7 +111,7 @@ function writeEnvFile(path: string, updates: Record<string, string>): void {
 
 async function main() {
   // Step 1: Generate signing key
-  console.log("Generating secp256k1 signing key...")
+  console.log("Generating label signing key...")
   const privateKeyBytes = secp256k1.utils.randomPrivateKey()
   const signingKeyHex = Buffer.from(privateKeyBytes).toString("hex")
   console.log(`  Key generated (${signingKeyHex.slice(0, 8)}...)\n`)

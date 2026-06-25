@@ -13,7 +13,7 @@ The app service connects to Tap over `TAP_URL`.
 
 | Service | Responsibility | Storage |
 |---------|----------------|---------|
-| App service | Dashboard, API routes, labeler process | `activity-log.db`, `labels.db` |
+| App service | Dashboard, API routes, labeler process | configured `ACTIVITY_DB_PATH`, `LABELS_DB_PATH` |
 | Tap service | Firehose replay / indexing | `tap.db` |
 
 Do not share the Tap database between services. Each service should have its own volume.
@@ -33,39 +33,60 @@ Required:
 
 | Variable | Description |
 |----------|-------------|
-| `DID` | Labeler DID |
-| `SIGNING_KEY` | Labeler private key |
-| `NEXT_PUBLIC_LABELER_ENDPOINT` | Public HTTPS URL of the app service |
+| `DID` | Labeler account DID |
+| `SIGNING_KEY` | Private key material used by `@skyware/labeler` to sign labels |
+| `NEXT_PUBLIC_LABELER_ENDPOINT` | Public HTTPS URL of the app service, for example `https://orglabeler.hypercerts.dev` |
 | `TAP_URL` | Required URL of the separate Tap service; no localhost default |
-| `TAP_ADMIN_PASSWORD` | App-side Tap admin password; required when the Tap service enables admin auth |
+
+Required when Tap admin auth is enabled:
+
+| Variable | Description |
+|----------|-------------|
+| `TAP_ADMIN_PASSWORD` | App-side Tap admin password; must match the Tap service |
 
 Usually needed for setup/sync:
 
 | Variable | Description |
 |----------|-------------|
-| `BSKY_IDENTIFIER` | Labeler account handle or email |
+| `BSKY_IDENTIFIER` | Labeler account handle, for example `orglabeler.certified.one` |
 | `BSKY_PASSWORD` | Labeler account password or app password |
+| `PDS_URL` | Optional labeler account PDS override; setup normally resolves it from the DID document |
+
+The labeler account handle is the signing source. `NEXT_PUBLIC_LABELER_ENDPOINT` is the hosted app endpoint and may be a different domain.
 
 Storage:
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `ACTIVITY_DB_PATH` | Activity log SQLite path | `/app/data/activity-log.db` |
-| `LABELS_DB_PATH` | Label records SQLite path | `/app/data/labels.db` |
+| Variable | Description | Code default | Railway example |
+|----------|-------------|--------------|-----------------|
+| `ACTIVITY_DB_PATH` | Activity log SQLite path | `/data/activity-log.db` | `/app/data/activity-log.db` |
+| `LABELS_DB_PATH` | Label records SQLite path | `/data/labels.db` | `/app/data/labels.db` |
 
 Optional:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `HF_TOKEN` | Enables HuggingFace scoring | _(empty)_ |
+| `HF_TOKEN` | Enables Hugging Face scoring | _(empty)_ |
+| `HYPERSCAN_RECORD_URL_BASE` | Base URL for dashboard links to source AT Protocol records | `https://hyperscan.dev/data` |
+| `TEST_PDS_HOSTS` | PDS hosts whose actors should always be labeled `likely-test` | _(empty)_ |
+| `TRUSTED_PDS_HOSTS` | PDS hosts whose actors receive the trusted-PDS score bonus | `certified.one,gainforest.id` |
+| `TRUSTED_PDS_BONUS` | Score points added for trusted actor PDS hosts | `10` |
+| `NEXT_PUBLIC_SITE_URL` | Dashboard metadata base URL | `VERCEL_URL` or `http://localhost:3000` |
+| `NEXT_PUBLIC_COMMIT_SHA` | Optional deployment SHA shown in the footer | `RAILWAY_GIT_COMMIT_SHA` when available |
+| `NEXT_PUBLIC_DEPLOY_TIME` | Optional deployment timestamp shown in the footer | image build time via `scripts/build.sh` |
 | `NEXT_PORT` | Internal Next.js port behind Caddy | `3000` |
-| `HOST` | Labeler bind host | `127.0.0.1` |
+| `HOST` | Labeler bind host | `0.0.0.0` |
 | `LABELER_PORT` | Internal labeler HTTP port behind Caddy | `4100` |
 | `METRICS_PORT` | Metrics port | `4101` |
-| `RESET_DB` | Clear app DB files on startup | _(empty)_ |
+| `RESET_DB` | Clear configured app DB files on startup; remove after one reset | _(empty)_ |
 | `URL_ENRICHMENT_ENABLED` | Enable detachable async URL checks through `url_checks` | `true` |
-| `URL_CHECK_TIMEOUT_MS` | Timeout for one URL resolution attempt | `4000` |
 | `URL_CHECK_INTERVAL_MS` | URL worker polling interval | `1000` |
+| `URL_CHECK_DISCOVERY_INTERVAL_MS` | New URL discovery scan interval | `30000` |
+| `URL_CHECK_TIMEOUT_MS` | Timeout for one URL resolution attempt | `4000` |
+| `URL_CHECK_OK_TTL_MS` | Freshness window for successful URL checks | `604800000` |
+| `URL_CHECK_FAILED_TTL_MS` | Downgrade window for hard failed URL checks | `86400000` |
+| `URL_CHECK_RETRY_BASE_MS` | Initial retry delay for temporary failures | `300000` |
+| `URL_CHECK_MAX_RETRY_MS` | Maximum retry delay for temporary failures | `3600000` |
+| `URL_CHECK_HARD_FAILURE_ATTEMPTS` | Hard failures needed before URL scoring removes resolve points | `2` |
 | `URL_CHECK_MAX_URLS_PER_DID` | Maximum profile/organization URLs cached and checked per DID | `5` |
 
 Start the app with:
