@@ -7,8 +7,8 @@ export const labelerServer = new LabelerServer({ did: DID, signingKey: SIGNING_K
 
 /**
  * Returns the active labels for one AT Protocol label subject.
- * Subjects may be actor DIDs or record URIs; negated labels remove earlier
- * active values from the returned set.
+ * Subjects are normally actor DIDs; negated labels remove earlier active
+ * values from the returned set.
  */
 export async function fetchCurrentLabels(subjectUri: string): Promise<Set<string>> {
   await labelerServer.db.execute('SELECT 1') // ensure db is ready
@@ -31,39 +31,9 @@ export async function fetchCurrentLabels(subjectUri: string): Promise<Set<string
 }
 
 /**
- * Negates active quality labels that still target record URIs.
- * Use during the DID-label migration so old record-level labels stop appearing
- * once actors are labeled directly by DID.
- */
-export async function negateAllRecordQualityLabels(): Promise<number> {
-  await labelerServer.db.execute('SELECT 1') // ensure db is ready
-  const result = await labelerServer.db.execute({
-    sql: 'SELECT DISTINCT uri FROM labels WHERE uri LIKE \'at://%\'',
-    args: [],
-  })
-
-  let negatedCount = 0
-  for (const row of result.rows) {
-    const subjectUri = row['uri'] as string
-    try {
-      const activeLabels = await fetchCurrentLabels(subjectUri)
-      const activeQualityLabels = [...activeLabels].filter(l => QUALITY_LABEL_IDENTIFIERS.includes(l))
-      if (activeQualityLabels.length > 0) {
-        logger.info({ uri: subjectUri, negating: activeQualityLabels }, 'Negating stale record-level quality labels')
-        await labelerServer.createLabels({ uri: subjectUri }, { negate: activeQualityLabels })
-        negatedCount++
-      }
-    } catch (err) {
-      logger.error({ err, uri: subjectUri }, 'Failed to negate record-level labels, continuing')
-    }
-  }
-  return negatedCount
-}
-
-/**
  * Negates all active quality labels on one label subject.
- * Use this for deleted actors, deleted records, and record-level cleanup during
- * the DID-label migration.
+ * Use this when an organization actor is deleted and its DID should no longer
+ * carry an active quality tier.
  */
 export async function negateQualityLabels(subjectUri: string): Promise<number> {
   const existing = uriLocks.get(subjectUri)
@@ -93,8 +63,8 @@ const uriLocks = new Map<string, Promise<unknown>>()
 
 /**
  * Ensures one quality label is active on a label subject.
- * Existing quality labels on the same DID or record URI are negated before the
- * new value is written, so each subject has at most one active quality tier.
+ * Existing quality labels on the same DID are negated before the new value is
+ * written, so each actor has at most one active quality tier.
  */
 export async function applyQualityLabel(subjectUri: string, labelIdentifier: string): Promise<void> {
   // Validate labelIdentifier before any DB operations

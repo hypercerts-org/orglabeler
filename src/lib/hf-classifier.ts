@@ -30,7 +30,7 @@ interface QueueItem {
 const queue: QueueItem[] = []
 let processing = false
 
-type ReclassifyCallback = (did: string, newTier: string, recordUri: string) => Promise<void>
+type ReclassifyCallback = (did: string, newTier: string) => Promise<void>
 let _onReclassify: ReclassifyCallback | null = null
 
 /**
@@ -109,7 +109,7 @@ function reclassifyWithHfSignal(did: string, rkey: string, classification: Conte
   })
 
   if (tier !== row.tier && _onReclassify) {
-    void _onReclassify(row.did, tier, row.uri).catch(err => {
+    void _onReclassify(row.did, tier).catch(err => {
       console.warn('[hf-classifier] label update failed:', err instanceof Error ? err.message : err)
     })
   }

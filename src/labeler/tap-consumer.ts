@@ -199,14 +199,6 @@ type OrganizationRecomputeOutcome = {
   profileIngestMode: 'strict' | 'fallback' | 'missing'
 }
 
-async function cleanRecordLevelQualityLabels(did: string, recordUri: string): Promise<number> {
-  const negatedCount = await negateQualityLabels(recordUri)
-  if (negatedCount > 0) {
-    logger.info({ did, uri: recordUri, negatedCount }, 'Cleaned up record-level quality labels after DID labeling')
-  }
-  return negatedCount
-}
-
 export async function recomputeLabeledOrganizationRow(did: string): Promise<OrganizationRecomputeOutcome | null> {
   if (hasPendingOrganizationDelete(did)) return null
 
@@ -269,9 +261,8 @@ export async function recomputeLabeledOrganizationRow(did: string): Promise<Orga
       if (labelAction !== 'unchanged') {
         await applyQualityLabel(did, result.tier)
       }
-      await cleanRecordLevelQualityLabels(did, organization.recordUri)
     } catch (err) {
-      logger.error({ err, uri: organization.recordUri, did }, 'Error applying DID label or cleaning record label (score still saved)')
+      logger.error({ err, did }, 'Error applying DID label (score still saved)')
       throw err
     }
 
@@ -295,9 +286,8 @@ async function processPendingOrganizationDeletes(source: 'startup' | 'worker'): 
     try {
       logger.info(
         { did: pendingDelete.did, rkey: pendingDelete.rkey, uri: pendingDelete.record_uri, source },
-        'Retrying pending organization label negation before cleanup',
+        'Retrying pending organization DID label negation before cleanup',
       )
-      const recordNegatedCount = await negateQualityLabels(pendingDelete.record_uri)
 
       if (!hasMatchingPendingOrganizationDelete(pendingDelete.did, pendingDelete.rkey, pendingDelete.record_uri)) {
         logger.info(
@@ -322,7 +312,7 @@ async function processPendingOrganizationDeletes(source: 'startup' | 'worker'): 
         continue
       }
 
-      const negatedCount = recordNegatedCount + didNegatedCount
+      const negatedCount = didNegatedCount
 
       processed++
 
@@ -596,7 +586,6 @@ export async function syncLabelsWithDb(): Promise<void> {
         synced++
       }
 
-      await cleanRecordLevelQualityLabels(activity.did, activity.uri)
     } catch (err) {
       logger.warn({ err, did: activity.did, uri: activity.uri }, 'Failed to sync label, continuing')
     }

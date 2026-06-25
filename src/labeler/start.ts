@@ -2,7 +2,7 @@ import 'dotenv/config'
 import fs from 'node:fs'
 import { HOST, LABELER_PORT, METRICS_PORT, TAP_URL, APP_DB_PATHS, TAP_ADMIN_PASSWORD } from '../lib/config'
 import { getPendingActivities, deleteActivity } from '../lib/db'
-import { labelerServer, negateAllRecordQualityLabels, applyQualityLabel, negateQualityLabels } from './server'
+import { labelerServer, applyQualityLabel } from './server'
 import {
   startTapConsumer,
   backfillHfClassification,
@@ -103,10 +103,9 @@ async function main() {
     })
   })
 
-  // Wire HF reclassification to update DID labels and clean up legacy record labels
-  setReclassifyCallback(async (did, newTier, recordUri) => {
+  // Wire HF reclassification to update DID labels.
+  setReclassifyCallback(async (did, newTier) => {
     await applyQualityLabel(did, newTier)
-    await negateQualityLabels(recordUri)
   })
 
   // 2. Start metrics server
@@ -125,17 +124,6 @@ async function main() {
 
   // 8. Reconcile local organization snapshots before steady-state ingestion begins.
   await reconcileStoredOrganizationSnapshots()
-
-  // 8b. Negate any remaining stale record-level labels from pre-DID-label deployments.
-  // This runs after reconciliation so existing local snapshots get DID labels first.
-  try {
-    const negatedCount = await negateAllRecordQualityLabels()
-    if (negatedCount > 0) {
-      logger.info({ count: negatedCount }, 'Negated stale record-level labels')
-    }
-  } catch (err) {
-    logger.error({ err }, 'Failed to negate stale record-level labels — continuing startup')
-  }
 
   // 9. Wait for external Tap service
   logger.info('Waiting for external Tap health...')

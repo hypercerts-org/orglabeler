@@ -64,7 +64,7 @@ The runtime is split into three pieces:
 - Tap service → labeler process over `TAP_URL`
 - Labeler process → `labels.db` + `activity-log.db`
 
-The Tap sidecar listens to both `app.certified.actor.profile` and `app.certified.actor.organization`, merges them by DID for actor context, and applies quality labels to the actor DID. During migration from record-level labels, startup reconciliation and TAP replay also negate stale quality labels that targeted `at://.../app.certified.actor.organization/...` record URIs.
+The Tap sidecar listens to both `app.certified.actor.profile` and `app.certified.actor.organization`, merges them by DID for actor context, and applies quality labels to the actor DID. Fresh deployments should wipe the app and Tap volumes together so old local labels, activity rows, and Tap cursor state are not reused.
 
 The Next.js dashboard reads from `activity-log.db`.
 
