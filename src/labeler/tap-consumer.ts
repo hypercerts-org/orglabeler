@@ -16,6 +16,7 @@ import {
   failRecomputeJob,
   getRecomputeJobCounts,
   hasPendingOrganizationDelete,
+  hasMatchingPendingOrganizationDelete,
   recoverStaleRunningRecomputeJobs,
   getProfileSnapshot,
   getOrganizationSnapshot,
@@ -247,7 +248,7 @@ export async function recomputeLabeledOrganizationRow(did: string): Promise<Orga
       throw new Error(`Scoring produced unsupported runtime tier: ${result.tier}`)
     }
 
-    const currentLabels = await fetchCurrentLabels(organization.recordUri)
+    const currentLabels = await fetchCurrentLabels(did)
     const currentQualityLabels = [...currentLabels].filter(isRuntimeLabelTier)
     const profileIngestMode = getProfileIngestMode(profile)
     const labelAction: OrganizationRecomputeOutcome['labelAction'] = currentQualityLabels.includes(result.tier)
@@ -258,10 +259,10 @@ export async function recomputeLabeledOrganizationRow(did: string): Promise<Orga
 
     try {
       if (labelAction !== 'unchanged') {
-        await applyQualityLabel(organization.recordUri, result.tier)
+        await applyQualityLabel(did, result.tier)
       }
     } catch (err) {
-      logger.error({ err, uri: organization.recordUri, did }, 'Error applying organization label (score still saved)')
+      logger.error({ err, did }, 'Error applying DID label (score still saved)')
       throw err
     }
 
@@ -285,9 +286,18 @@ async function processPendingOrganizationDeletes(source: 'startup' | 'worker'): 
     try {
       logger.info(
         { did: pendingDelete.did, rkey: pendingDelete.rkey, uri: pendingDelete.record_uri, source },
-        'Retrying pending organization label negation before cleanup',
+        'Retrying pending organization DID label negation before cleanup',
       )
-      const negatedCount = await negateQualityLabels(pendingDelete.record_uri)
+
+      if (!hasMatchingPendingOrganizationDelete(pendingDelete.did, pendingDelete.rkey, pendingDelete.record_uri)) {
+        logger.info(
+          { did: pendingDelete.did, rkey: pendingDelete.rkey, uri: pendingDelete.record_uri, source },
+          'Pending organization delete was already superseded; skipped DID label negation and local cleanup',
+        )
+        continue
+      }
+
+      const didNegatedCount = await negateQualityLabels(pendingDelete.did)
       const completed = completePendingOrganizationDelete(
         pendingDelete.did,
         pendingDelete.rkey,
@@ -301,6 +311,8 @@ async function processPendingOrganizationDeletes(source: 'startup' | 'worker'): 
         )
         continue
       }
+
+      const negatedCount = didNegatedCount
 
       processed++
 
@@ -559,29 +571,30 @@ export async function syncLabelsWithDb(): Promise<void> {
 
   for (const activity of activities) {
     try {
-      const currentLabels = await fetchCurrentLabels(activity.uri)
-      const currentQuality = [...currentLabels].filter(isRuntimeLabelTier)
       if (!isRuntimeLabelTier(activity.tier)) {
         continue
       }
 
+      const currentLabels = await fetchCurrentLabels(activity.did)
+      const currentQuality = [...currentLabels].filter(isRuntimeLabelTier)
       const dbTier = activity.tier as RuntimeLabelTier
 
-      // If the ATProto label doesn't match the DB tier, update it
+      // If the ATProto DID label doesn't match the DB tier, update it
       if (!currentQuality.includes(dbTier)) {
-        logger.info({ uri: activity.uri, dbTier, atprotoLabels: currentQuality }, 'Syncing mismatched label')
-        await applyQualityLabel(activity.uri, dbTier)
+        logger.info({ did: activity.did, dbTier, atprotoLabels: currentQuality }, 'Syncing mismatched DID label')
+        await applyQualityLabel(activity.did, dbTier)
         synced++
       }
+
     } catch (err) {
-      logger.warn({ err, uri: activity.uri }, 'Failed to sync label, continuing')
+      logger.warn({ err, did: activity.did, uri: activity.uri }, 'Failed to sync label, continuing')
     }
   }
 
   if (synced > 0) {
-    logger.info({ count: synced }, 'Synced mismatched ATProto labels with DB tiers')
+    logger.info({ count: synced }, 'Synced mismatched DID labels with DB tiers')
   } else {
-    logger.info('All ATProto labels match DB tiers')
+    logger.info('All DID labels match DB tiers')
   }
 }
 

@@ -30,9 +30,13 @@ interface QueueItem {
 const queue: QueueItem[] = []
 let processing = false
 
-type ReclassifyCallback = (uri: string, newTier: string) => Promise<void>
+type ReclassifyCallback = (did: string, newTier: string) => Promise<void>
 let _onReclassify: ReclassifyCallback | null = null
 
+/**
+ * Registers the labeler-side hook used when HF signals move an actor to a new
+ * quality tier after the main scoring pass has already stored an activity row.
+ */
 export function setReclassifyCallback(cb: ReclassifyCallback): void {
   _onReclassify = cb
 }
@@ -105,7 +109,7 @@ function reclassifyWithHfSignal(did: string, rkey: string, classification: Conte
   })
 
   if (tier !== row.tier && _onReclassify) {
-    void _onReclassify(row.uri, tier).catch(err => {
+    void _onReclassify(row.did, tier).catch(err => {
       console.warn('[hf-classifier] label update failed:', err instanceof Error ? err.message : err)
     })
   }

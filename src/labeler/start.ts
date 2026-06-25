@@ -2,7 +2,7 @@ import 'dotenv/config'
 import fs from 'node:fs'
 import { HOST, LABELER_PORT, METRICS_PORT, TAP_URL, APP_DB_PATHS, TAP_ADMIN_PASSWORD } from '../lib/config'
 import { getPendingActivities, deleteActivity } from '../lib/db'
-import { labelerServer, negateAllDIDLabels, applyQualityLabel } from './server'
+import { labelerServer, applyQualityLabel } from './server'
 import {
   startTapConsumer,
   backfillHfClassification,
@@ -103,23 +103,14 @@ async function main() {
     })
   })
 
-  // Wire HF reclassification to also update ATProto labels
-  setReclassifyCallback(applyQualityLabel)
+  // Wire HF reclassification to update DID labels.
+  setReclassifyCallback(async (did, newTier) => {
+    await applyQualityLabel(did, newTier)
+  })
 
   // 2. Start metrics server
   startMetricsServer(METRICS_PORT)
   logger.info({ port: METRICS_PORT }, 'Metrics server started')
-
-  // 2b. Negate any stale DID-level labels from previous deployments
-  // Fix 1: wrap in try/catch so a failure doesn't crash startup
-  try {
-    const negatedCount = await negateAllDIDLabels()
-    if (negatedCount > 0) {
-      logger.info({ count: negatedCount }, 'Negated stale DID-level labels')
-    }
-  } catch (err) {
-    logger.error({ err }, 'Failed to negate stale DID-level labels — continuing startup')
-  }
 
   // Fix 7: clean up stale pending records BEFORE starting tap consumer
   // so a backfill event can't re-score a record that we're about to delete
@@ -149,7 +140,7 @@ async function main() {
   logger.info('Tap consumer started — receiving backfill + live events')
   backfillHfClassification()
 
-  // One-time sync: fix any records where DB tier disagrees with ATProto label
+  // One-time sync: fix any actors where DB tier disagrees with ATProto label
   // (caused by pre-fix HF reclassifications that only updated the DB)
   syncLabelsWithDb().catch(err => {
     logger.warn({ err }, 'Label sync failed — will retry on next restart')

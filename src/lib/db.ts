@@ -589,6 +589,22 @@ export function hasPendingOrganizationDelete(did: string): boolean {
   return Boolean(row)
 }
 
+/**
+ * Checks whether a queued organization delete still targets the same record.
+ * Use this after async label cleanup to avoid applying actor-level cleanup for
+ * a delete that was superseded by a newer organization upsert.
+ */
+export function hasMatchingPendingOrganizationDelete(did: string, rkey: string, recordUri: string): boolean {
+  const db = getDb()
+  const row = db.prepare(`
+    SELECT 1
+    FROM pending_organization_deletes
+    WHERE did = @did AND rkey = @rkey AND record_uri = @recordUri
+    LIMIT 1
+  `).get({ did, rkey, recordUri })
+  return Boolean(row)
+}
+
 export function deletePendingOrganizationDelete(did: string): void {
   const db = getDb()
   db.prepare('DELETE FROM pending_organization_deletes WHERE did = ?').run(did)

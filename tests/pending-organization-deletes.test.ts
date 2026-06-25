@@ -15,6 +15,7 @@ const {
   deletePendingOrganizationDelete,
   getDb,
   getOrganizationSnapshot,
+  hasMatchingPendingOrganizationDelete,
   hasPendingOrganizationDelete,
   upsertOrganizationSnapshot,
   upsertPendingOrganizationDelete,
@@ -57,6 +58,18 @@ test('completing a pending delete removes only the matching local organization s
   assert.equal(completePendingOrganizationDelete(did, rkey, recordUri), true)
   assert.equal(getOrganizationSnapshot(did), null)
   assert.equal(hasPendingOrganizationDelete(did), false)
+})
+
+test('matching pending delete check requires the same record URI and rkey', () => {
+  const did = 'did:example:delete-match'
+  const rkey = 'self'
+  const recordUri = `at://${did}/app.certified.actor.organization/${rkey}`
+
+  upsertPendingOrganizationDelete(did, rkey, recordUri)
+
+  assert.equal(hasMatchingPendingOrganizationDelete(did, rkey, recordUri), true)
+  assert.equal(hasMatchingPendingOrganizationDelete(did, 'other', recordUri), false)
+  assert.equal(hasMatchingPendingOrganizationDelete(did, rkey, `${recordUri}-old`), false)
 })
 
 test('stale pending delete cleanup does not remove a newer replacement snapshot', () => {

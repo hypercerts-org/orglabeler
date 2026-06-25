@@ -2,7 +2,7 @@
 
 > Automated quality scoring for merged `app.certified.actor.profile` + `app.certified.actor.organization` data on AT Protocol
 
-This fork monitors both `app.certified.actor.profile` and `app.certified.actor.organization` records, merges them by DID for display and classification context, and labels organizations based on how complete, consistent, and non-placeholder the organization record looks.
+This fork monitors both `app.certified.actor.profile` and `app.certified.actor.organization` records, merges them by DID for display and classification context, and labels actor DIDs based on how complete, consistent, and non-placeholder the organization profile looks.
 
 ## Labels
 
@@ -64,7 +64,7 @@ The runtime is split into three pieces:
 - Tap service → labeler process over `TAP_URL`
 - Labeler process → `labels.db` + `activity-log.db`
 
-The Tap sidecar listens to both `app.certified.actor.profile` and `app.certified.actor.organization`, merges them by DID for actor context, and still applies labels to the organization record URI.
+The Tap sidecar listens to both `app.certified.actor.profile` and `app.certified.actor.organization`, merges them by DID for actor context, and applies quality labels to the actor DID. Fresh deployments should wipe the app and Tap volumes together so old local labels, activity rows, and Tap cursor state are not reused.
 
 The Next.js dashboard reads from `activity-log.db`.
 

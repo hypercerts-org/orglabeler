@@ -122,7 +122,7 @@ export interface ActivityLogEntry {
   id?: number
   did: string
   rkey: string
-  uri: string
+  uri: string               // Organization record URI retained for dashboard links; labels target did.
   displayName: string
   score: number
   tier: LabelTier
