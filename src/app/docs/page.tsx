@@ -110,7 +110,7 @@ export default function DocsPage() {
           Documentation
         </h1>
         <p className='text-sm text-muted-foreground mt-1'>
-          How the certified organization labeler merges profile and organization records, then scores and labels the organization record on AT Protocol.
+          How the certified organization labeler merges profile and organization records, then scores the organization context and labels the actor DID on AT Protocol.
         </p>
       </div>
 
@@ -125,7 +125,7 @@ export default function DocsPage() {
               { step: 'Profile + Organization Records', sub: 'collected together by Tap' },
               { step: 'Merged by DID', sub: 'for actor context' },
               { step: 'Scored', sub: 'merged profile + organization context' },
-              { step: 'Labeled', sub: 'signed label applied to the organization record URI' },
+              { step: 'Labeled', sub: 'signed label applied to the actor DID' },
             ].map(({ step, sub }, i, arr) => (
               <div key={step} className='flex items-center gap-2'>
                 <div className='flex flex-col items-center gap-0.5'>
@@ -174,8 +174,8 @@ export default function DocsPage() {
           <li className='flex gap-3'>
             <span className='font-[family-name:var(--font-syne)] font-bold text-foreground shrink-0'>4.</span>
             <span>
-              A signed AT Protocol label is applied to the organization record URI based on the score tier.
-              When a record is rescored, the previous label is negated and replaced with the new one.
+              A signed AT Protocol label is applied to the actor DID based on the score tier.
+              When the actor is rescored, the previous DID label is negated and replaced with the new one.
             </span>
           </li>
         </ol>
@@ -190,7 +190,7 @@ export default function DocsPage() {
           points, plus a configurable actor-PDS trust bonus. The rubric gives less credit to basic identity fields
           and more weight to harder-to-fake credibility signals like website resolution, location, and visual/profile
           completeness. Hard test signals override the score to likely-test; validation notes are informational only,
-          and labels stay attached to the organization record URI.
+          and labels stay attached to the actor DID.
         </p>
         <div className='border border-border rounded-lg bg-card overflow-hidden'>
           <table className='w-full text-sm'>
@@ -302,7 +302,7 @@ export default function DocsPage() {
         </h2>
         <p className='text-sm text-muted-foreground'>
           The certified organization labeler exposes a small REST API for the dashboard as well as the standard AT Protocol
-          labeler XRPC endpoint. Labels are still published against the organization record URI.
+          labeler XRPC endpoint. Quality labels are published against actor DIDs.
         </p>
         <div className='space-y-4'>
           {API_ENDPOINTS.map(({ method, path, description, curl }) => (
@@ -360,7 +360,7 @@ export default function DocsPage() {
           <li className='flex gap-2'>
             <span className='text-foreground shrink-0'>—</span>
             <span>
-              Each label is signed with ed25519 and includes: source DID, record URI, label value,
+              Each label is signed with ed25519 and includes: source DID, subject DID, label value,
               timestamp, and a cryptographic signature.
             </span>
           </li>
@@ -368,15 +368,15 @@ export default function DocsPage() {
             <span className='text-foreground shrink-0'>—</span>
             <span>
               Apps can subscribe to the labeler to automatically receive organization quality signals for
-              app.certified.actor.organization records and filter or sort them by tier. The related profile record is
-              used for merged actor context, not for the label target.
+              actor DIDs and filter or sort them by tier. The related profile and organization records are
+              used for merged actor context, not as the label target.
             </span>
           </li>
           <li className='flex gap-2'>
             <span className='text-foreground shrink-0'>—</span>
             <span>
-              Only one quality label is active per record URI at a time. When a record is updated and
-              re-scored, the previous label is negated before the new one is applied.
+              Only one quality label is active per actor DID at a time. When actor context changes and
+              is re-scored, the previous label is negated before the new one is applied.
             </span>
           </li>
         </ul>

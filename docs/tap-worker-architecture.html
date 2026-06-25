@@ -414,7 +414,7 @@
 
           <div class="box delete">
             <h3>Delete branch</h3>
-            <p>Deletes do not negate labels inline. They persist a durable <code>negate-org-label</code> job with the record URI.</p>
+            <p>Deletes do not negate labels inline. They persist durable cleanup keyed by DID and record URI so actor labels and legacy record labels are negated outside the Tap handler.</p>
           </div>
         </div>
 
