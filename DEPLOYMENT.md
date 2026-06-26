@@ -40,59 +40,67 @@ The direct Caddy route is required for `subscribeLabels`, because it is a WebSoc
 
 ## Environment variables
 
-### Required for the running service
+### Required for the running app service
 
-- `DID` — labeler DID
-- `SIGNING_KEY` — labeler private key used by `@skyware/labeler`
-
-These are validated at startup by `src/lib/config.ts`.
+- `DID` — labeler account DID
+- `SIGNING_KEY` — private key material used by `@skyware/labeler` to sign labels
+- `TAP_URL` — URL of the separate Tap service; there is no localhost fallback
+- `NEXT_PUBLIC_LABELER_ENDPOINT` — public HTTPS base URL for the dashboard and labeler XRPC endpoint
 
 ### Required for first-time labeler setup / label sync
 
-- `BSKY_IDENTIFIER`
-- `BSKY_PASSWORD`
-- `NEXT_PUBLIC_LABELER_ENDPOINT`
+- `LABELER_IDENTIFIER` — labeler account identifier, for example `orglabeler.certified.one`
+- `LABELER_PASSWORD` — labeler account password or app password
+- `PDS_URL` — optional override for the labeler account PDS; setup normally resolves this from the DID document
 
-Use these with `npm run setup` and `npm run set-labels` when registering the labeler account and label definitions.
-
-### Required for the app service to reach Tap
-
-- `TAP_URL` — required URL of the separate Tap service
+Use these with `npm run setup` and `npm run set-labels` when registering the labeler account and label definitions. The labeler account identifier is the signing source; `NEXT_PUBLIC_LABELER_ENDPOINT` is the hosted app endpoint and may be a different domain.
 
 ### SQLite paths
 
 Set these to persistent storage in hosted environments:
 
-- `ACTIVITY_DB_PATH` (default `activity-log.db`)
-- `LABELS_DB_PATH` (default `labels.db`)
+- `ACTIVITY_DB_PATH` (code default `/data/activity-log.db`)
+- `LABELS_DB_PATH` (code default `/data/labels.db`)
 
-### Tap service storage
+### Tap service settings
 
 The Tap service manages its own persistent SQLite file and any Tap-specific settings outside this repo.
 
-If your Tap deployment uses admin auth, configure `TAP_ADMIN_PASSWORD` on the Tap service itself.
+If your Tap deployment uses admin auth, configure `TAP_ADMIN_PASSWORD` on the Tap service itself and set the same `TAP_ADMIN_PASSWORD` on the app service so health checks and the Tap WebSocket can authenticate.
 
-### Optional
+### Optional app settings
 
-- `HF_TOKEN` — enables HuggingFace classification; if unset, HF scoring stays disabled
-- `PDS_URL` — overrides PDS discovery from the DID document
+- `HF_TOKEN` — enables Hugging Face classification; if unset, HF scoring stays disabled
+- `HYPERSCAN_RECORD_URL_BASE` — base URL used when the dashboard links to source AT Protocol records; default `https://hyperscan.dev/data`
 - `TEST_PDS_HOSTS` — comma-separated PDS hosts whose actors should always be labeled `likely-test`; URL enrichment waits for actor PDS resolution and skips matching test PDS hosts
-- `PORT` — public Caddy HTTP port (hosted platforms usually set this; default fallback `8080`)
+- `TRUSTED_PDS_HOSTS` — comma-separated PDS hosts whose actors receive the trusted-PDS score bonus; default `certified.one,gainforest.id`
+- `TRUSTED_PDS_BONUS` — score points added for trusted actor PDS hosts; default `10`
+- `PORT` — public Caddy HTTP port (hosted platforms usually set this; Caddy fallback `8080`)
 - `NEXT_PORT` — internal Next.js HTTP port (`3000` by default)
-- `HOST` — bind host for the labeler server (`127.0.0.1` is recommended when Caddy runs in the same container)
+- `HOST` — bind host for the labeler server (`0.0.0.0` by default; `127.0.0.1` is recommended when only same-container Caddy should reach it)
 - `LABELER_PORT` — internal labeler HTTP port (`4100` by default)
 - `METRICS_PORT` — metrics port (`4101` by default)
-- `RESET_DB=true` — deletes the SQLite files before startup
+- `RESET_DB=true` — deletes configured app SQLite files plus WAL/SHM companions before startup; remove it after one reset
+- `URL_ENRICHMENT_ENABLED` — enables async URL checks through `url_checks`; default `true`
+- `URL_CHECK_INTERVAL_MS` — poll interval for processing due URL checks; default `1000`
+- `URL_CHECK_DISCOVERY_INTERVAL_MS` — how often the URL worker scans local snapshots for newly referenced URLs; default `30000`
+- `URL_CHECK_TIMEOUT_MS` — timeout for one URL resolution attempt; default `4000`
+- `URL_CHECK_OK_TTL_MS` — freshness window for successful URL checks; default `604800000`
+- `URL_CHECK_FAILED_TTL_MS` — downgrade window for hard failed URL checks before another attempt; default `86400000`
+- `URL_CHECK_RETRY_BASE_MS` — initial retry delay for temporary URL check failures; default `300000`
+- `URL_CHECK_MAX_RETRY_MS` — maximum retry delay for temporary URL check failures; default `3600000`
+- `URL_CHECK_HARD_FAILURE_ATTEMPTS` — number of hard failures required before URL scoring removes resolve points; default `2`
+- `URL_CHECK_MAX_URLS_PER_DID` — maximum profile/organization URLs cached and checked per DID; default `5`
 
 ## Persistence requirements
 
 This fork uses two SQLite databases in the app service and one in the Tap service:
 
-- `activity-log.db` — dashboard data and scoring history
-- `labels.db` — AT Protocol label records
-- `tap.db` — Tap cursor / replay state (Tap service)
+- `ACTIVITY_DB_PATH` — dashboard data and scoring history
+- `LABELS_DB_PATH` — AT Protocol label records
+- Tap service database — Tap cursor / replay state
 
-The app service should mount a volume for `activity-log.db` and `labels.db`. The Tap service should mount its own volume for `tap.db`. If the files are not persisted, redeploys will lose dashboard history and Tap will replay from an old or empty cursor.
+The app service should mount a volume for the configured `ACTIVITY_DB_PATH` and `LABELS_DB_PATH`. The Tap service should mount its own volume for its database. If the files are not persisted, redeploys will lose dashboard history and Tap will replay from old or empty state.
 
 Also persist the `-wal` and `-shm` companions that SQLite may create beside each DB file.
 

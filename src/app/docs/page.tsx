@@ -32,7 +32,7 @@ const SCORING_CRITERIA = [
   {
     label: 'Profile website resolves',
     points: COMPLETENESS_WEIGHTS.websiteResolves,
-    description: 'Awards stronger points when profile.website is a valid public HTTP(S) URL.',
+    description: 'Awards stronger provisional points for a valid-looking public HTTP(S) URL; async URL enrichment removes them after confirmed hard failures.',
   },
   {
     label: 'Profile website matches name',
@@ -47,7 +47,7 @@ const SCORING_CRITERIA = [
   {
     label: 'Organization URLs resolve',
     points: COMPLETENESS_WEIGHTS.organizationUrlsResolve,
-    description: 'Awards a small amount when at least one organization URL is a valid public HTTP(S) URL.',
+    description: 'Awards a small provisional bonus when at least one organization URL is a valid-looking public HTTP(S) URL; async URL enrichment removes it after confirmed hard failures.',
   },
   {
     label: 'Location valid',
@@ -151,7 +151,7 @@ export default function DocsPage() {
               and{' '}
               <span className='font-mono text-xs bg-secondary rounded px-1 py-0.5'>app.certified.actor.organization</span>{' '}
               records. Tap automatically discovers repos, backfills historical records from each PDS,
-              and streams live events with cryptographic verification. The sidecar merges those records by DID
+              and streams live events with cryptographic verification. The labeler merges those records by DID
               so the dashboard can show the profile alongside the organization context. When a profile record needs
               fallback handling, the usable core fields are kept and malformed optional fields are ignored.
             </span>
@@ -360,8 +360,8 @@ export default function DocsPage() {
           <li className='flex gap-2'>
             <span className='text-foreground shrink-0'>—</span>
             <span>
-              Each label is signed with ed25519 and includes: source DID, subject DID, label value,
-              timestamp, and a cryptographic signature.
+              Each signed label includes: source DID, subject DID, label value, timestamp,
+              and a cryptographic signature.
             </span>
           </li>
           <li className='flex gap-2'>

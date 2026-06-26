@@ -1,17 +1,17 @@
-// Run with: npx tsx src/labeler/set-labels.ts [handle] [password]
+// Run with: npx tsx src/labeler/set-labels.ts [labeler-identifier] [password]
 
-import { BSKY_IDENTIFIER, BSKY_PASSWORD } from '../lib/config'
+import { LABELER_IDENTIFIER, LABELER_PASSWORD } from '../lib/config'
 import { LABELS } from '../lib/constants'
 import { resolvePds } from '../lib/resolve-pds'
 import { setLabelerLabelDefinitions } from './declare-labeler'
 
 async function main() {
-  const identifier = process.argv[2] || BSKY_IDENTIFIER
-  const password = process.argv[3] || BSKY_PASSWORD
+  const identifier = process.argv[2] || LABELER_IDENTIFIER
+  const password = process.argv[3] || LABELER_PASSWORD
 
   if (!identifier || !password) {
-    console.error('Error: BSKY_IDENTIFIER and BSKY_PASSWORD must be set in .env or passed as CLI args')
-    console.error('Usage: npx tsx src/labeler/set-labels.ts <handle> <password>')
+    console.error('Error: LABELER_IDENTIFIER and LABELER_PASSWORD must be set in .env or passed as CLI args')
+    console.error('Usage: npx tsx src/labeler/set-labels.ts <labeler-identifier> <password>')
     process.exit(1)
   }
 
