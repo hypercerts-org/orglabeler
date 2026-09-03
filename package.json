@@ -20,7 +20,9 @@
     "gen:lexicons": "ts-lex build --lexicons ./lexicons --out ./src/lexicons --clear --import-ext \"\"",
     "changeset": "changeset",
     "changeset:empty": "changeset --empty",
-    "version:packages": "changeset version && npm install --package-lock-only"
+    "changeset:status": "changeset status",
+    "type-check": "tsc --noEmit",
+    "version:packages": "changeset version && npm install --package-lock-only --ignore-scripts"
   },
   "dependencies": {
     "@atproto/api": "0.19.9",
