@@ -49,16 +49,19 @@ npm run reset           # Clear local databases for fresh start
 
 ## Documentation Maintenance
 
-When behavior, configuration, deployment, scripts, or operator workflow changes, check whether the relevant docs need updates in the same change.
+When behavior, configuration, deployment, scripts, or operator workflow changes, check whether the relevant docs need updates in the same change. Every normal pull request needs a Changeset fragment under `.changeset/`; use a release fragment for user- or operator-visible changes and an empty fragment when the application version should not change. The generated `Release` pull request and GitHub Release workflow are maintained separately from Railway deployment operations.
 
 Current docs to consider:
 
 - `README.md` — project overview, setup, scripts, env vars, production shape
+- `docs/RELEASING.md` — contributor and maintainer Changesets/GitHub Release workflow
+- `.changeset/README.md` — Changesets authoring and empty-fragment guidance
 - `DEPLOYMENT.md` — generic hosted deployment guidance
 - `RAILWAY.md` — Railway-specific deployment guidance
 - `AGENTS.md` — agent-facing architecture, workflow, and maintenance instructions
 - `src/app/docs/page.tsx` — dashboard documentation shown in the app
 - `.agents/skills/orglabeler/SKILL.md` — downstream consumer integration guidance
 - `.env.example` — documented environment variable defaults/examples
+- `.github/workflows/release.yml` — automated versioning, tag, and GitHub Release workflow; keep its Changesets action inputs aligned with the current v2 model
 
 If a new documentation file is introduced, add it to this list and include when it should be checked.

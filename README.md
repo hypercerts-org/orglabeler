@@ -15,7 +15,7 @@ This fork monitors both `app.certified.actor.profile` and `app.certified.actor.o
 ## Quick Start
 
 ### Prerequisites
-- Node.js 22+
+- Node.js 22.13+ (within Node 22)
 - An AT Protocol account dedicated to the labeler
 
 ### Setup
@@ -52,6 +52,10 @@ npm run start:service   # Caddy on $PORT, Next on NEXT_PORT, labeler on LABELER_
 ```
 
 Tap runs as a separate service. Point `TAP_URL` at that service's URL; there is no localhost fallback and the app will not start without it.
+
+## Releases
+
+Every normal pull request needs either a release changeset from `npm run changeset` or an empty changeset from `npm run changeset:empty` when no version bump is needed. Maintainers merge the generated **Release** pull request; the workflow then creates a Git tag and GitHub Release without publishing the private package to npm. See [docs/RELEASING.md](docs/RELEASING.md) for the contributor and maintainer flow.
 
 ## Architecture
 
@@ -177,7 +181,7 @@ This is important because `subscribeLabels` uses WebSockets, which need a real r
 
 ## Tech Stack
 
-- **Runtime:** Node.js 22
+- **Runtime:** Node.js 22.13+ within Node 22
 - **Framework:** Next.js 16, React 19, TypeScript
 - **Styling:** Tailwind CSS v4, OKLCH colors
 - **Labeler:** @skyware/labeler, @atproto/tap
