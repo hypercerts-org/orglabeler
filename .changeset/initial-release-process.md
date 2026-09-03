@@ -2,4 +2,4 @@
 "certified-organization-labeler": patch
 ---
 
-Add the automated release-notes process for maintainers and operators.
+Add automated release notes and GitHub Releases, with hardened workflow dependency execution, for maintainers and operators.
