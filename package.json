@@ -1,7 +1,7 @@
 {
   "name": "certified-organization-labeler",
   "description": "Certified Organization Labeler fork for app.certified.actor.organization",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "scripts": {
