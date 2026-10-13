@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import type { OrganizationSnapshot } from '../src/lib/types'
+import type { JevFetch } from '../src/lib/jev'
 
 const testDir = mkdtempSync(join(tmpdir(), 'orglabeler-did-label-subjects-'))
 process.env.ACTIVITY_DB_PATH = join(testDir, 'activity-log.db')
@@ -11,16 +12,21 @@ process.env.LABELS_DB_PATH = join(testDir, 'labels.db')
 process.env.DID = 'did:example:labeler'
 process.env.SIGNING_KEY = '01'.repeat(32)
 process.env.TAP_URL = 'http://127.0.0.1:65535'
-process.env.HF_TOKEN = ''
+process.env.TYPESAFE_API_KEY = 'test-key'
+process.env.TEST_PDS_HOSTS = ''
 
+const { JEV_POLICY_VERSION, JEV_QUESTION_VERSION } = await import('../src/lib/jev')
 const {
   closeDb,
   getDb,
-  logActivity,
+  getJevAssessment,
+  initializeJevAssessment,
+  saveJevAssessment,
   upsertOrganizationSnapshot,
 } = await import('../src/lib/db')
 const { fetchCurrentLabels, labelerServer } = await import('../src/labeler/server')
-const { recomputeLabeledOrganizationRow, syncLabelsWithDb } = await import('../src/labeler/tap-consumer')
+const { processOrganizationAssessment } = await import('../src/labeler/jev-assessment-worker')
+const { syncLabelsWithDb } = await import('../src/labeler/tap-consumer')
 
 async function resetLabelDb(): Promise<void> {
   await (labelerServer as unknown as { dbInitLock?: Promise<void> }).dbInitLock
@@ -36,6 +42,9 @@ beforeEach(async () => {
     DELETE FROM recompute_jobs;
     DELETE FROM actor_pds_cache;
     DELETE FROM url_checks;
+    DELETE FROM jev_assessments;
+    DELETE FROM reassessment_run_items;
+    DELETE FROM reassessment_runs;
   `)
   await resetLabelDb()
 })
@@ -59,7 +68,7 @@ async function storedLabelSubjects(): Promise<string[]> {
   return result.rows.map(row => String(row.uri))
 }
 
-test('recompute applies quality labels to the actor DID, not the organization record URI', async () => {
+test('Jev assessment applies the quality label to the actor DID, not the organization record URI', async () => {
   const did = 'did:example:org-recompute'
   const rkey = 'self'
   const recordUri = `at://${did}/app.certified.actor.organization/${rkey}`
@@ -71,32 +80,47 @@ test('recompute applies quality labels to the actor DID, not the organization re
     payload: organizationPayload(),
   })
 
-  const outcome = await recomputeLabeledOrganizationRow(did)
+  const jevReply = {
+    model: 'jev-test-model',
+    answers: {
+      test_data: { type: 'noul', noul: 0.001 },
+      substantive_purpose: { type: 'noul', noul: 0.99 },
+      consistency_quality: {
+        type: 'choice',
+        choice: 'standard',
+        confidence: 0.998,
+        probabilities: { high_quality: 0.001, standard: 0.998, uncertain: 0.001 },
+      },
+    },
+    usage: { input_tokens: 10, output_tokens: 3 },
+  }
+  const fetchImpl: JevFetch = async () => new Response(JSON.stringify(jevReply), { status: 200 })
+  const outcome = await processOrganizationAssessment(did, { fetchImpl })
 
-  assert.ok(outcome)
-  assert.equal(outcome.tier, 'standard')
+  assert.equal(outcome, 'assessed')
+  assert.equal(getJevAssessment(did)?.publishedTier, 'standard')
   assert.deepEqual([...await fetchCurrentLabels(did)], ['standard'])
   assert.deepEqual([...await fetchCurrentLabels(recordUri)], [])
   assert.deepEqual(await storedLabelSubjects(), [did])
 })
 
-test('DB label sync repairs missing actor DID labels without labeling record URIs', async () => {
+test('DB label sync repairs missing current Jev DID labels without labeling record URIs', async () => {
   const did = 'did:example:org-sync'
   const rkey = 'self'
   const recordUri = `at://${did}/app.certified.actor.organization/${rkey}`
 
-  logActivity({
+  upsertOrganizationSnapshot({ did, rkey, recordUri, payload: organizationPayload() })
+  initializeJevAssessment({ did, rkey, uri: recordUri, displayName: 'Sync Example Organization', inputIdentity: 'sync-input' })
+  assert.equal(saveJevAssessment({
     did,
-    rkey,
-    uri: recordUri,
-    title: 'Sync Example Organization',
-    score: 80,
+    inputIdentity: 'sync-input',
+    model: 'jev-test-model',
+    questionVersion: JEV_QUESTION_VERSION,
+    policyVersion: JEV_POLICY_VERSION,
+    probabilities: { test_data: { noul: 0.001 } },
+    status: 'assessed',
     tier: 'high-quality',
-    breakdown: '{}',
-    testSignals: '[]',
-    validationNotes: [],
-    labeledAt: new Date().toISOString(),
-  })
+  }), true)
 
   await syncLabelsWithDb()
 

@@ -1,10 +1,10 @@
 'use client'
 
-import type { ActivityLogEntry } from '@/lib/types'
-import { ScoreCard } from './ScoreCard'
+import type { AssessmentFeedEntry } from '@/lib/types'
+import { AssessmentCard } from './AssessmentCard'
 
 interface ActivityFeedProps {
-  activities: ActivityLogEntry[]
+  activities: AssessmentFeedEntry[]
   title?: string
   showLoadMore?: boolean
   onLoadMore?: () => void
@@ -46,7 +46,7 @@ export function ActivityFeed({
         <div className='space-y-2 stagger-children'>
           {activities.map(entry => {
             try {
-              return <ScoreCard key={entry.uri ?? entry.id} entry={entry} />
+              return <AssessmentCard key={entry.uri} entry={entry} />
             } catch {
               return null
             }

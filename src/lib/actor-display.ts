@@ -1,5 +1,5 @@
 import type { MergedActorInput, MergedActorOutput } from './types'
-import { buildMergedScoringInput } from './scoring-input'
+import { buildMergedActorEvidence } from './actor-evidence'
 
 function websiteHostname(website: string | undefined | null): string | null {
   if (!website?.trim()) return null
@@ -12,7 +12,7 @@ function websiteHostname(website: string | undefined | null): string | null {
 }
 
 export function getMergedActorDisplay(actor: MergedActorInput): MergedActorOutput {
-  const merged = buildMergedScoringInput(actor)
+  const merged = buildMergedActorEvidence(actor)
 
   return {
     did: actor.did,

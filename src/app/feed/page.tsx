@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { ActivityFeed } from '@/components/ActivityFeed'
-import type { ActivityLogEntry, RuntimeLabelTier } from '@/lib/types'
+import type { AssessmentFeedEntry, RuntimeLabelTier } from '@/lib/types'
 
-function normalizeActivity(entry: ActivityLogEntry): ActivityLogEntry {
+function normalizeActivity(entry: AssessmentFeedEntry): AssessmentFeedEntry {
   return {
     ...entry,
     validationNotes: Array.isArray(entry.validationNotes) ? entry.validationNotes : [],
@@ -22,10 +22,9 @@ const LIMIT = 20
 
 export default function FeedPage() {
   const [selectedTier, setSelectedTier] = useState<RuntimeLabelTier | 'all'>('all')
-  const [aiOnly, setAiOnly] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
-  const [activities, setActivities] = useState<ActivityLogEntry[]>([])
+  const [activities, setActivities] = useState<AssessmentFeedEntry[]>([])
   const [total, setTotal] = useState(0)
   const [offset, setOffset] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -46,19 +45,18 @@ export default function FeedPage() {
 
       try {
         const tierParam = selectedTier === 'all' ? '' : `&tier=${selectedTier}`
-        const hfParam = aiOnly ? '&hf=true' : ''
         const searchParam = debouncedQuery ? `&q=${encodeURIComponent(debouncedQuery)}` : ''
         const res = await fetch(
-          `/api/recent?limit=${LIMIT}&offset=${currentOffset}${tierParam}${hfParam}${searchParam}`
+          `/api/recent?limit=${LIMIT}&offset=${currentOffset}${tierParam}${searchParam}`
         )
         if (!res.ok) throw new Error('API error')
         const data = await res.json()
 
         if (reset) {
-          setActivities((data.activities as ActivityLogEntry[]).map(normalizeActivity))
+          setActivities((data.activities as AssessmentFeedEntry[]).map(normalizeActivity))
           setOffset(LIMIT)
         } else {
-          setActivities(prev => [...prev, ...(data.activities as ActivityLogEntry[]).map(normalizeActivity)])
+          setActivities(prev => [...prev, ...(data.activities as AssessmentFeedEntry[]).map(normalizeActivity)])
           setOffset(prev => prev + LIMIT)
         }
         setTotal(data.total)
@@ -71,22 +69,20 @@ export default function FeedPage() {
         setLoadingMore(false)
       }
     },
-    [selectedTier, aiOnly, debouncedQuery]  // depend on tier, AI filter, and search query
+    [selectedTier, debouncedQuery]
   )
 
   // Fix #3: stable poller — only update if newest item changed, DON'T reset offset
   const pollFirst = useCallback(async () => {
     try {
       const tierParam = selectedTier === 'all' ? '' : `&tier=${selectedTier}`
-      const hfParam = aiOnly ? '&hf=true' : ''
       const searchParam = debouncedQuery ? `&q=${encodeURIComponent(debouncedQuery)}` : ''
-      const res = await fetch(`/api/recent?limit=${LIMIT}&offset=0${tierParam}${hfParam}${searchParam}`)
+      const res = await fetch(`/api/recent?limit=${LIMIT}&offset=0${tierParam}${searchParam}`)
       if (!res.ok) throw new Error('API error')
       const data = await res.json()
       setActivities(prev => {
-        const normalizedActivities = (data.activities as ActivityLogEntry[]).map(normalizeActivity)
-        if (normalizedActivities[0]?.uri === prev[0]?.uri) return prev
-        // Merge: replace first page, keep any extra loaded pages
+        const normalizedActivities = (data.activities as AssessmentFeedEntry[]).map(normalizeActivity)
+        // Refresh the first page so status changes update while retaining loaded pages.
         return [...normalizedActivities, ...prev.slice(LIMIT)]
       })
       setTotal(data.total)
@@ -94,9 +90,9 @@ export default function FeedPage() {
     } catch (error) {
       console.error('Failed to poll activities:', error)
     }
-  }, [selectedTier, aiOnly, debouncedQuery])
+  }, [selectedTier, debouncedQuery])
 
-  // Reset and re-fetch when tier, AI filter, or search query changes
+  // Reset and re-fetch when tier or search query changes
   useEffect(() => {
     fetchActivities(0, true)
   }, [fetchActivities])
@@ -119,7 +115,7 @@ export default function FeedPage() {
           Organization Records Feed
         </h1>
         <p className='text-sm text-muted-foreground mt-1'>
-          All detected organization records.
+          Jev assessments, published labels, and records awaiting review.
         </p>
       </div>
 
@@ -149,16 +145,6 @@ export default function FeedPage() {
             </button>
           ))}
         </div>
-        <button
-          onClick={() => setAiOnly(prev => !prev)}
-          className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer border ${
-            aiOnly
-              ? 'bg-primary text-primary-foreground border-primary'
-              : 'border-border text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          🤖 AI Evaluated
-        </button>
         <span className='text-[11px] text-muted-foreground'>
           {total} records
         </span>

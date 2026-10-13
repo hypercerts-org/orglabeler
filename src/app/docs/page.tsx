@@ -1,5 +1,4 @@
-import { ScoreBadge } from '@/components/ScoreBadge'
-import { COMPLETENESS_WEIGHTS, DEFAULT_TRUSTED_PDS_BONUS, DEFAULT_TRUSTED_PDS_HOSTS } from '@/lib/constants'
+import { TierBadge } from '@/components/TierBadge'
 
 const getLabelerBaseUrl = () => (process.env.NEXT_PUBLIC_LABELER_ENDPOINT ?? '').replace(/\/$/, '')
 
@@ -8,76 +7,21 @@ const labelerUrl = (path: string) => {
   return baseUrl ? `${baseUrl}${path}` : path
 }
 
-const SCORING_CRITERIA = [
+const ASSESSMENT_QUESTIONS = [
   {
-    label: 'Display name',
-    points: COMPLETENESS_WEIGHTS.displayName,
-    description: 'Awards a small amount when the display name comes from profile data or organization type instead of the DID-derived fallback.',
+    label: 'Test data',
+    response: 'NOUL probability',
+    description: 'Looks for contextual evidence that the actor or organization data is synthetic or intended for testing. Configured test-PDS hosts bypass Jev and receive the authoritative likely-test override.',
   },
   {
-    label: 'Description',
-    points: COMPLETENESS_WEIGHTS.description,
-    description: 'Awards points when the profile description is present; generic words like test, testing, or tested are allowed in descriptions.',
+    label: 'Substantive purpose',
+    response: 'NOUL probability',
+    description: 'Checks whether the saved records establish a specific organizational mission or public purpose rather than a placeholder or generic claim.',
   },
   {
-    label: 'Organization type',
-    points: COMPLETENESS_WEIGHTS.organizationType,
-    description: 'Awards partial points for only `other`, full points for a specific organization type.',
-  },
-  {
-    label: 'Profile website present',
-    points: COMPLETENESS_WEIGHTS.websitePresent,
-    description: 'Awards points when profile.website is filled in.',
-  },
-  {
-    label: 'Profile website resolves',
-    points: COMPLETENESS_WEIGHTS.websiteResolves,
-    description: 'Awards stronger provisional points for a valid-looking public HTTP(S) URL; async URL enrichment removes them after confirmed hard failures.',
-  },
-  {
-    label: 'Profile website matches name',
-    points: COMPLETENESS_WEIGHTS.websiteMatchesName,
-    description: 'Awards a small amount when the display name matches the profile.website domain stem.',
-  },
-  {
-    label: 'Organization URLs (small bonus)',
-    points: COMPLETENESS_WEIGHTS.organizationUrlsPresent,
-    description: 'Awards a small amount when the organization has at least one URL.',
-  },
-  {
-    label: 'Organization URLs resolve',
-    points: COMPLETENESS_WEIGHTS.organizationUrlsResolve,
-    description: 'Awards a small provisional bonus when at least one organization URL is a valid-looking public HTTP(S) URL; async URL enrichment removes it after confirmed hard failures.',
-  },
-  {
-    label: 'Location valid',
-    points: COMPLETENESS_WEIGHTS.locationValid,
-    description: 'Awards stronger points when the location is a valid certified location reference.',
-  },
-  {
-    label: 'Founded date valid',
-    points: COMPLETENESS_WEIGHTS.foundedDateValid,
-    description: 'Awards points for a valid, non-future foundedDate.',
-  },
-  {
-    label: 'Founded date age bonus',
-    points: COMPLETENESS_WEIGHTS.foundedDateAge,
-    description: 'Awards bonus points when the founded date is at least a year old.',
-  },
-  {
-    label: 'Avatar',
-    points: COMPLETENESS_WEIGHTS.avatar,
-    description: 'Awards meaningful points when the profile has an avatar.',
-  },
-  {
-    label: 'Banner',
-    points: COMPLETENESS_WEIGHTS.banner,
-    description: 'Awards meaningful points when the profile has a banner.',
-  },
-  {
-    label: 'Trusted PDS bonus',
-    points: DEFAULT_TRUSTED_PDS_BONUS,
-    description: `Awards the configured trusted-PDS bonus when the actor DID resolves to ${DEFAULT_TRUSTED_PDS_HOSTS.join(' or ')} by default.`,
+    label: 'Consistency and quality',
+    response: 'Choice probabilities',
+    description: 'Distinguishes high-quality, standard, and uncertain using specificity, internal consistency, and useful context. It does not verify identity or legitimacy.',
   },
 ]
 
@@ -85,13 +29,13 @@ const API_ENDPOINTS = [
   {
     method: 'GET',
     path: '/api/stats',
-    description: 'Dashboard statistics — total records, tier breakdown, 24h/7d record counts.',
+    description: 'Dashboard statistics — monitored actors, published-tier counts, assessment status, stale labels, and 24h/7d actor updates.',
     curl: `curl "${labelerUrl('/api/stats')}"`,
   },
   {
     method: 'GET',
     path: '/api/recent?limit=20&offset=0&tier=all',
-    description: 'Recent organization records with pagination, tier filtering, AI-only filtering (hf=true), and text search (q=...). Valid tier values: all, likely-test, standard, high-quality.',
+    description: 'Assessment feed with pagination, published-tier filtering, and text search (q=...). Entries expose assessment status, label freshness, model/question/policy versions, and current probabilities. Valid tier values: all, likely-test, standard, high-quality.',
     curl: `curl "${labelerUrl('/api/recent?limit=20&offset=0&tier=high-quality')}"`,
   },
   {
@@ -110,7 +54,7 @@ export default function DocsPage() {
           Documentation
         </h1>
         <p className='text-sm text-muted-foreground mt-1'>
-          How the certified organization labeler merges profile and organization records, then scores the organization context and labels the actor DID on AT Protocol.
+          How the certified organization labeler merges profile and organization records, assesses them with Jev, and publishes quality labels against actor DIDs.
         </p>
       </div>
 
@@ -124,7 +68,7 @@ export default function DocsPage() {
             {[
               { step: 'Profile + Organization Records', sub: 'collected together by Tap' },
               { step: 'Merged by DID', sub: 'for actor context' },
-              { step: 'Scored', sub: 'merged profile + organization context' },
+              { step: 'Assessed by Jev', sub: 'structured actor and URL evidence' },
               { step: 'Labeled', sub: 'signed label applied to the actor DID' },
             ].map(({ step, sub }, i, arr) => (
               <div key={step} className='flex items-center gap-2'>
@@ -159,23 +103,19 @@ export default function DocsPage() {
           <li className='flex gap-3'>
             <span className='font-[family-name:var(--font-syne)] font-bold text-foreground shrink-0'>2.</span>
             <span>
-              When a record is detected it is written to the log, scored, and then shown in the
-              dashboard with its final tier.
+              Tap events update local record snapshots and queue a durable assessment job. The dashboard shows queued and waiting states while work is pending.
             </span>
           </li>
           <li className='flex gap-3'>
             <span className='font-[family-name:var(--font-syne)] font-bold text-foreground shrink-0'>3.</span>
             <span>
-              The scoring engine separates hard test signals from softer validation notes. Records with test signals
-              are labeled <ScoreBadge tier='likely-test' />. Records without test signals receive the 100-point
-              completeness score and are labeled standard or high-quality from that score.
+              Jev evaluates test-data evidence, substantive purpose, and consistency/quality from the saved profile and organization records plus URL status evidence. Configured <code className='font-mono text-xs'>TEST_PDS_HOSTS</code> take precedence and produce <TierBadge tier='likely-test' /> without a Jev call.
             </span>
           </li>
           <li className='flex gap-3'>
             <span className='font-[family-name:var(--font-syne)] font-bold text-foreground shrink-0'>4.</span>
             <span>
-              A signed AT Protocol label is applied to the actor DID based on the score tier.
-              When the actor is rescored, the previous DID label is negated and replaced with the new one.
+              Current standard or high-quality decisions are published as signed labels on the actor DID. Uncertain or unavailable results do not create new labels. Existing labels are retained and explicitly marked stale when their evidence changes.
             </span>
           </li>
         </ol>
@@ -183,78 +123,51 @@ export default function DocsPage() {
 
       <section className='space-y-4'>
         <h2 className='font-[family-name:var(--font-syne)] text-lg font-bold'>
-          Scoring criteria
+          Jev questions and evidence
         </h2>
         <p className='text-sm text-muted-foreground'>
-          Each organization record is evaluated on 13 completeness criteria for a maximum of 100 completeness
-          points, plus a configurable actor-PDS trust bonus. The rubric gives less credit to basic identity fields
-          and more weight to harder-to-fake credibility signals like website resolution, location, and visual/profile
-          completeness. Hard test signals override the score to likely-test; validation notes are informational only,
-          and labels stay attached to the actor DID.
+          Jev receives the latest saved profile and organization records plus cached URL-resolution states in one structured request. Record strings are untrusted evidence, never instructions. The resulting label is a provisional content-quality signal, not identity, registration, or legitimacy verification.
         </p>
         <div className='border border-border rounded-lg bg-card overflow-hidden'>
           <table className='w-full text-sm'>
             <thead>
               <tr className='border-b border-border'>
-                <th className='text-left px-4 py-2.5 text-xs font-medium text-muted-foreground font-[family-name:var(--font-syne)]'>
-                  Criterion
-                </th>
-                <th className='text-left px-4 py-2.5 text-xs font-medium text-muted-foreground font-[family-name:var(--font-syne)]'>
-                  Description
-                </th>
-                <th className='text-right px-4 py-2.5 text-xs font-medium text-muted-foreground font-[family-name:var(--font-syne)]'>
-                  Max pts
-                </th>
+                <th className='text-left px-4 py-2.5 text-xs font-medium text-muted-foreground font-[family-name:var(--font-syne)]'>Question</th>
+                <th className='text-left px-4 py-2.5 text-xs font-medium text-muted-foreground font-[family-name:var(--font-syne)]'>Evidence considered</th>
+                <th className='text-right px-4 py-2.5 text-xs font-medium text-muted-foreground font-[family-name:var(--font-syne)]'>Response</th>
               </tr>
             </thead>
             <tbody>
-              {SCORING_CRITERIA.map(({ label, points, description }, i) => (
-                <tr
-                  key={label}
-                  className={i < SCORING_CRITERIA.length - 1 ? 'border-b border-border' : ''}
-                >
+              {ASSESSMENT_QUESTIONS.map(({ label, response, description }, index) => (
+                <tr key={label} className={index < ASSESSMENT_QUESTIONS.length - 1 ? 'border-b border-border' : ''}>
                   <td className='px-4 py-2.5 font-medium text-xs whitespace-nowrap'>{label}</td>
                   <td className='px-4 py-2.5 text-xs text-muted-foreground'>{description}</td>
-                  <td className='px-4 py-2.5 text-right'>
-                    <span className='font-mono text-xs font-medium'>{points}</span>
-                  </td>
+                  <td className='px-4 py-2.5 text-right font-mono text-xs'>{response}</td>
                 </tr>
               ))}
-              <tr className='border-t border-border bg-secondary/40'>
-                <td className='px-4 py-2.5 font-[family-name:var(--font-syne)] font-bold text-xs'>Total</td>
-                <td />
-                <td className='px-4 py-2.5 text-right'>
-                  <span className='font-mono text-xs font-bold'>100 + trusted PDS bonus</span>
-                </td>
-              </tr>
             </tbody>
           </table>
         </div>
 
         <h3 className='font-[family-name:var(--font-syne)] text-sm font-bold mt-4'>
-          Test signals and validation notes
+          Uncertain and waiting states
         </h3>
         <p className='text-sm text-muted-foreground'>
-          Matching a hard test signal forces <ScoreBadge tier='likely-test' />. Validation notes are softer data-quality
-          issues shown to operators, but they do not change the tier.
+          Configured test-PDS hosts are authoritative. Other test-data decisions come from Jev’s contextual assessment; incidental mentions of testing are not by themselves enough to mark an actor as test data.
         </p>
         <div className='border border-border rounded-lg bg-card p-4 text-xs text-muted-foreground space-y-1'>
-          <p className='font-medium text-foreground text-xs'>Hard test signal patterns</p>
+          <p className='font-medium text-foreground text-xs'>Fallback and waiting behavior</p>
           <ul className='space-y-1 pl-3'>
-            <li>• Actors hosted on configured <span className='font-mono bg-secondary rounded px-1'>TEST_PDS_HOSTS</span>.</li>
-            <li>• Placeholder display names such as <span className='font-mono bg-secondary rounded px-1'>test org</span>, <span className='font-mono bg-secondary rounded px-1'>demo</span>, <span className='font-mono bg-secondary rounded px-1'>dev</span>, <span className='font-mono bg-secondary rounded px-1'>staging</span>, <span className='font-mono bg-secondary rounded px-1'>qa</span>, <span className='font-mono bg-secondary rounded px-1'>e2e</span>, <span className='font-mono bg-secondary rounded px-1'>sandbox</span>, <span className='font-mono bg-secondary rounded px-1'>fixture</span>, obvious glued test fixtures like <span className='font-mono bg-secondary rounded px-1'>tobytest</span>, generic names like <span className='font-mono bg-secondary rounded px-1'>org</span>/<span className='font-mono bg-secondary rounded px-1'>org 1</span>/<span className='font-mono bg-secondary rounded px-1'>first org</span>/<span className='font-mono bg-secondary rounded px-1'>new org</span>, and workflow states like <span className='font-mono bg-secondary rounded px-1'>published</span>, <span className='font-mono bg-secondary rounded px-1'>unpublished</span>, or <span className='font-mono bg-secondary rounded px-1'>changes requested</span>.</li>
-            <li>• Obvious junk descriptions such as <span className='font-mono bg-secondary rounded px-1'>lorem ipsum</span> or a description that is only placeholder text. Generic words like <span className='font-mono bg-secondary rounded px-1'>test</span>, <span className='font-mono bg-secondary rounded px-1'>testing</span>, or <span className='font-mono bg-secondary rounded px-1'>tested</span> are allowed in descriptions.</li>
-            <li>• Placeholder domains such as <span className='font-mono bg-secondary rounded px-1'>example.com</span>, <span className='font-mono bg-secondary rounded px-1'>example.org</span>, <span className='font-mono bg-secondary rounded px-1'>example.net</span>, and reserved <span className='font-mono bg-secondary rounded px-1'>.test</span>/<span className='font-mono bg-secondary rounded px-1'>.example</span>/<span className='font-mono bg-secondary rounded px-1'>.invalid</span> hostnames.</li>
-            <li>• Repeated-character runs in display names.</li>
+            <li>• A host in configured <span className='font-mono bg-secondary rounded px-1'>TEST_PDS_HOSTS</span> receives the authoritative likely-test override without Jev.</li>
+            <li>• A non-test actor without <span className='font-mono bg-secondary rounded px-1'>TYPESAFE_API_KEY</span> is saved and waits for configuration; it does not receive a new quality label.</li>
+            <li>• Ambiguous or low-confidence Jev outcomes remain uncertain. Existing published labels are retained and marked stale where applicable.</li>
+            <li>• Changes to saved records or URL-resolution evidence invalidate in-flight results; stale or deleted results are not published.</li>
           </ul>
         </div>
         <div className='border border-border rounded-lg bg-card p-4 text-xs text-muted-foreground space-y-1'>
           <p className='font-medium text-foreground text-xs'>Validation notes</p>
           <p>
-            These are informational only. They can appear when fallback handling keeps usable profile fields,
-            optional fields are malformed, short metadata fields such as organization type or URL label contain
-            placeholder/test words, or the record has very little metadata. They do not imply suspicious activity
-            or affect tiering.
+            These informational notes are saved with usable profiles retained through fallback handling, for example when malformed optional avatar/banner media is dropped. Unusable profile payloads are not included in the assessment feed notes. They do not describe keyword, sparse-record, test-data, or Jev assessment checks.
           </p>
         </div>
       </section>
@@ -264,30 +177,29 @@ export default function DocsPage() {
           Quality tiers
         </h2>
         <p className='text-sm text-muted-foreground'>
-          Scores map to standard or high-quality unless a hard test signal is present. Test signals override the
-          numeric score and produce a <ScoreBadge tier='likely-test' /> label. Validation notes do not change the tier.
+          Published tier labels are discrete outcomes, not scores. Only a confident Jev decision or the configured test-PDS override produces a quality label. Uncertain, awaiting-configuration, and stale states are dashboard statuses, not label values.
         </p>
         <div className='grid gap-3 sm:grid-cols-2'>
           {[
             {
               tier: 'high-quality' as const,
-              range: '70+',
-              detail: 'Strong merged profile + organization record with broad completeness across the rubric.',
+              range: 'confident Jev choice',
+              detail: 'Specific, coherent organizational purpose with substantial useful context. This is not identity or legitimacy verification.',
             },
             {
               tier: 'standard' as const,
-              range: '0 – 69 without test signals',
-              detail: 'Non-test merged record with anything below the high-quality threshold.',
+              range: 'confident Jev choice',
+              detail: 'A substantive, coherent organization context that is less detailed than the high-quality rubric.',
             },
             {
               tier: 'likely-test' as const,
-              range: 'test signals only',
-              detail: 'Contains hard test evidence, such as a configured test PDS, placeholder display name, or placeholder domain.',
+              range: 'test-PDS policy or confident test decision',
+              detail: 'A configured test PDS is authoritative; Jev can also detect contextual evidence of synthetic or test data.',
             },
           ].map(({ tier, range, detail }) => (
             <div key={tier} className='border border-border rounded-lg bg-card p-4 space-y-2'>
               <div className='flex items-center justify-between gap-2'>
-                <ScoreBadge tier={tier} size='md' />
+                <TierBadge tier={tier} />
                 <span className='font-mono text-xs text-muted-foreground'>{range}</span>
               </div>
               <p className='text-xs text-muted-foreground'>{detail}</p>
@@ -301,8 +213,7 @@ export default function DocsPage() {
           API endpoints
         </h2>
         <p className='text-sm text-muted-foreground'>
-          The certified organization labeler exposes a small REST API for the dashboard as well as the standard AT Protocol
-          labeler XRPC endpoint. Quality labels are published against actor DIDs.
+          The public REST API provides dashboard statistics and assessment status; the standard AT Protocol labeler XRPC endpoint serves signed quality labels. REST assessment details can be stale or uncertain and must not be treated as published label state.
         </p>
         <div className='space-y-4'>
           {API_ENDPOINTS.map(({ method, path, description, curl }) => (
@@ -320,6 +231,9 @@ export default function DocsPage() {
             </div>
           ))}
         </div>
+        <p className='text-sm text-muted-foreground'>
+          Admins sign in at /admin through AT Protocol OAuth. The confidential client requests only the atproto scope, and only a verified DID in ADMIN_DIDS receives a local session; mutations remain protected by origin and CSRF checks. Configure ADMIN_ORIGIN plus the OAuth signing and encryption keys before enabling admin access. Reassessment requires explicit confirmation and shows run progress; there is no password fallback.
+        </p>
       </section>
 
       <section className='space-y-4'>
@@ -375,8 +289,7 @@ export default function DocsPage() {
           <li className='flex gap-2'>
             <span className='text-foreground shrink-0'>—</span>
             <span>
-              Only one quality label is active per actor DID at a time. When actor context changes and
-              is re-scored, the previous label is negated before the new one is applied.
+              Only one quality label is active per actor DID at a time. When a current assessment changes the published tier, the previous label is negated before the new one is applied.
             </span>
           </li>
         </ul>

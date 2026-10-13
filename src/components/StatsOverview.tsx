@@ -1,7 +1,7 @@
 'use client'
 
 import type { LabelStats, RuntimeLabelTier } from '@/lib/types'
-import { ScoreBadge } from './ScoreBadge'
+import { TierBadge } from './TierBadge'
 
 interface StatsOverviewProps {
   stats: LabelStats
@@ -12,10 +12,10 @@ const QUALITY_TIERS: RuntimeLabelTier[] = ['likely-test', 'standard', 'high-qual
 export function StatsOverview({ stats }: StatsOverviewProps) {
   return (
     <div className='flex gap-3 overflow-x-auto pb-2 scrollbar-none'>
-      {/* Total Labeled */}
+      {/* Total organizations */}
       <div className='border border-border rounded-lg bg-card p-4 min-w-[140px] flex-shrink-0'>
         <p className='text-2xl font-bold text-foreground'>{stats.total}</p>
-        <p className='text-[10px] uppercase tracking-wide text-muted-foreground mt-1'>total labeled</p>
+        <p className='text-[10px] uppercase tracking-wide text-muted-foreground mt-1'>organizations monitored</p>
       </div>
 
       {/* Last 24h */}
@@ -35,7 +35,7 @@ export function StatsOverview({ stats }: StatsOverviewProps) {
         <div className='flex flex-wrap gap-1.5'>
           {QUALITY_TIERS.map(tier => (
             <span key={tier} className='flex items-center gap-1'>
-              <ScoreBadge tier={tier} />
+              <TierBadge tier={tier} />
               <span className='text-[11px] font-mono text-muted-foreground'>
                 {stats.byTier[tier] ?? 0}
               </span>
@@ -45,34 +45,15 @@ export function StatsOverview({ stats }: StatsOverviewProps) {
         <p className='text-[10px] uppercase tracking-wide text-muted-foreground mt-1'>by quality tier</p>
       </div>
 
-      {/* HF Classification Coverage */}
-      {stats.hfCoverage !== undefined && (
-        <div className='border border-border rounded-lg bg-card p-4 min-w-[200px] flex-shrink-0'>
-          <div className='flex items-baseline gap-2'>
-            <p className='text-2xl font-bold text-foreground'>
-              {stats.hfCoverage.classified}
-            </p>
-            <p className='text-sm text-muted-foreground'>
-              / {stats.hfCoverage.total}
-            </p>
-          </div>
-          {/* Progress bar */}
-          <div className='mt-2 h-1.5 rounded-full bg-secondary overflow-hidden'>
-            <div
-              className='h-full rounded-full transition-all duration-500'
-              style={{
-                width: `${stats.hfCoverage.total > 0 ? (stats.hfCoverage.classified / stats.hfCoverage.total * 100) : 0}%`,
-                backgroundColor: stats.hfCoverage.classified === stats.hfCoverage.total
-                  ? 'oklch(0.8 0.15 145)'   // green when complete
-                  : 'oklch(0.75 0.15 260)', // brand purple when in-progress
-              }}
-            />
-          </div>
-          <p className='text-[10px] uppercase tracking-wide text-muted-foreground mt-1'>
-            🤖 hf classified
-          </p>
+      {/* Assessment status */}
+      <div className='border border-border rounded-lg bg-card p-4 min-w-[220px] flex-shrink-0'>
+        <div className='flex flex-wrap gap-x-3 gap-y-1 text-xs font-mono'>
+          <span>{stats.byAssessmentStatus.uncertain} uncertain</span>
+          <span>{stats.byAssessmentStatus['awaiting-configuration']} awaiting key</span>
+          <span>{stats.staleLabels} stale labels</span>
         </div>
-      )}
+        <p className='text-[10px] uppercase tracking-wide text-muted-foreground mt-2'>assessment status</p>
+      </div>
     </div>
   )
 }

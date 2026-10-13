@@ -1,48 +1,47 @@
 import { Tap, SimpleIndexer } from '@atproto/tap'
 import type { TapChannel } from '@atproto/tap'
-import { TAP_URL, TAP_ADMIN_PASSWORD, ACTIVITY_COLLECTION, TRUSTED_PDS_BONUS, TRUSTED_PDS_HOSTS } from '../lib/config'
-import { cachedActorPdsHostForScoring, ACTOR_PDS_CACHE_TTL_MS } from '../lib/actor-pds-policy'
-import { applyPdsTestOverride } from '../lib/pds-test-override'
+import { TAP_URL, TAP_ADMIN_PASSWORD, ACTIVITY_COLLECTION } from '../lib/config'
+import { ACTOR_PDS_CACHE_TTL_MS } from '../lib/actor-pds-policy'
 import { normalizePdsHostFromUrl } from '../lib/pds-utils'
 import { resolvePdsForDid } from '../lib/resolve-pds'
-import { scoreActivity } from '../lib/scorer'
 import {
-  logActivity,
-  getUnclassifiedActivities,
-  getAllActivitiesForSync,
   claimDueRecomputeJob,
   completeRecomputeJob,
-  enqueueRecomputeJob,
   failRecomputeJob,
   getRecomputeJobCounts,
-  hasPendingOrganizationDelete,
-  hasMatchingPendingOrganizationDelete,
-  recoverStaleRunningRecomputeJobs,
-  getProfileSnapshot,
-  getOrganizationSnapshot,
+  getAllJevAssessments,
   getAllOrganizationSnapshots,
-  deleteProfileSnapshot,
-  deleteOrganizationRecordState,
-  completePendingOrganizationDelete,
-  deletePendingOrganizationDelete,
-  clearActivityHfFields,
+  getOrganizationSnapshot,
   getPendingOrganizationDeletes,
+  getProfileSnapshot,
+  hasMatchingPendingOrganizationDelete,
+  hasPendingOrganizationDelete,
+  recoverStaleRunningRecomputeJobs,
   recordActorPdsFailure,
   recordActorPdsOk,
   recordPendingOrganizationDeleteAttempt,
-  upsertProfileSnapshot,
+  deleteOrganizationRecordState,
+  deletePendingOrganizationDelete,
+  deleteProfileSnapshot,
+  completePendingOrganizationDelete,
   upsertOrganizationSnapshot,
   upsertPendingOrganizationDelete,
+  upsertProfileSnapshot,
+  updateReassessmentRunItem,
+  setJevAssessmentStatus,
 } from '../lib/db'
-import { enqueueClassification, reevaluateExistingClassifications } from '../lib/hf-classifier'
 import { applyQualityLabel, fetchCurrentLabels, negateQualityLabels } from './server'
-import { getMergedActorDisplay } from '../lib/actor-display'
-import { buildMergedScoringInput } from '../lib/scoring-input'
 import { salvageProfileFallback } from '../lib/profile-fallback'
 import logger from './logger'
 import { observeTapHandlerDuration } from './metrics'
-import { enqueueUrlChecksForDid, getUrlResolutionMapForDid } from './url-enrichment-worker'
-import type { ActivityRecord, ProfileFallbackProfile, ProfileSnapshot, RuntimeLabelTier } from '../lib/types'
+import { enqueueUrlChecksForDid } from './url-enrichment-worker'
+import {
+  processOrganizationAssessment,
+  queueOrganizationAssessment,
+  queueSavedOrganizationsNeedingAssessment,
+} from './jev-assessment-worker'
+import { withDidLock } from '../lib/did-lock'
+import type { ActivityRecord, ProfileFallbackProfile, ProfileSnapshot } from '../lib/types'
 import { $safeParse as $safeParseProfile } from '../lexicons/app/certified/actor/profile.defs'
 import { $safeParse } from '../lexicons/app/certified/actor/organization.defs'
 
@@ -61,10 +60,6 @@ const PENDING_DELETE_RETRY_BASE_MS = 2000
 const PENDING_DELETE_MAX_RETRY_MS = 60_000
 
 const indexer = new SimpleIndexer()
-
-function isRuntimeLabelTier(tier: string): tier is RuntimeLabelTier {
-  return tier === 'likely-test' || tier === 'standard' || tier === 'high-quality'
-}
 
 function summarizeValidationNotes(validationNotes: string[]): { noteCount: number; noteSummary: string } {
   const noteCount = validationNotes.length
@@ -116,18 +111,13 @@ function logRecordOutcome(details: {
   action: string
   source: 'live' | 'startup' | 'worker'
   labelAction: string
-  score?: number
-  tier?: RuntimeLabelTier
   profileIngestMode?: 'strict' | 'fallback' | 'missing'
 }): void {
   logger.info(details, 'Processed Tap record')
 }
 
 function enqueueOrganizationRecompute(did: string, reason: string): void {
-  enqueueRecomputeJob('recompute-org', did, {
-    delayMs: RECOMPUTE_DEBOUNCE_MS,
-    payload: { reason },
-  })
+  queueOrganizationAssessment(did, reason, { delayMs: RECOMPUTE_DEBOUNCE_MS })
 }
 
 function retryDelayForAttempt(attempts: number): number {
@@ -138,6 +128,23 @@ function retryDelayForAttempt(attempts: number): number {
 function pendingDeleteRetryDelayForAttempt(attempts: number): number {
   const exponent = Math.max(0, attempts - 1)
   return Math.min(PENDING_DELETE_MAX_RETRY_MS, PENDING_DELETE_RETRY_BASE_MS * (2 ** exponent))
+}
+
+function parseRecomputePayload(payload: string | null): { force: boolean; runIds: string[] } {
+  if (!payload) return { force: false, runIds: [] }
+  try {
+    const parsed: unknown = JSON.parse(payload)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { force: false, runIds: [] }
+    const value = parsed as Record<string, unknown>
+    return {
+      force: value['force'] === true,
+      runIds: Array.isArray(value['runIds'])
+        ? value['runIds'].filter((item): item is string => typeof item === 'string')
+        : [],
+    }
+  } catch {
+    return { force: false, runIds: [] }
+  }
 }
 
 async function resolveAndCacheActorPds(did: string): Promise<{ pdsUrl: string; pdsHost: string }> {
@@ -151,133 +158,6 @@ async function resolveAndCacheActorPds(did: string): Promise<{ pdsUrl: string; p
   return { pdsUrl: pds, pdsHost }
 }
 
-function buildHfText(
-  profileSnapshot: ReturnType<typeof getProfileSnapshot>,
-  organization: ActivityRecord,
-  fallbackDisplayName: string,
-): string {
-  const profile = profileSnapshot?.payload
-  const urlParts = (organization.urls ?? []).flatMap((item) => {
-    const label = item.label?.trim()
-    const url = item.url?.trim()
-    return [label, url].filter((part): part is string => Boolean(part))
-  })
-
-  return [
-    fallbackDisplayName,
-    profile?.displayName,
-    profile?.description,
-    profile?.website,
-    (organization.organizationType ?? []).join(' '),
-    urlParts.join(' '),
-  ]
-    .map(part => part?.trim())
-    .filter((part): part is string => Boolean(part))
-    .join(' ')
-}
-
-function refreshHfClassification(did: string): void {
-  const organization = getOrganizationSnapshot(did)
-  if (!organization) return
-
-  const profile = getProfileSnapshot(did)
-  const merged = getMergedActorDisplay({
-    did,
-    profile: profile?.payload ?? null,
-    organization: organization.payload,
-  })
-  const text = buildHfText(profile, organization.payload, merged.displayName)
-
-  clearActivityHfFields(did, organization.rkey)
-  enqueueClassification(text, did, organization.rkey)
-}
-
-type OrganizationRecomputeOutcome = {
-  score: number
-  tier: RuntimeLabelTier
-  labelAction: 'applied' | 'unchanged' | 'negated-and-applied'
-  profileIngestMode: 'strict' | 'fallback' | 'missing'
-}
-
-export async function recomputeLabeledOrganizationRow(did: string): Promise<OrganizationRecomputeOutcome | null> {
-  if (hasPendingOrganizationDelete(did)) return null
-
-  const organization = getOrganizationSnapshot(did)
-  if (!organization) return null
-
-  const profile = getProfileSnapshot(did)
-  const scoringInput = buildMergedScoringInput({
-    did,
-    profile: profile?.payload ?? null,
-    organization: organization.payload,
-    profileValidationNotes: profile?.validationNotes ?? [],
-  })
-  scoringInput.urlResolution = getUrlResolutionMapForDid(did)
-  const actorPdsHost = cachedActorPdsHostForScoring(did)
-  scoringInput.actorPdsHost = actorPdsHost
-  scoringInput.trustedPdsHosts = TRUSTED_PDS_HOSTS
-  scoringInput.trustedPdsBonus = TRUSTED_PDS_BONUS
-  const merged = getMergedActorDisplay({
-    did,
-    profile: profile?.payload ?? null,
-    organization: organization.payload,
-  })
-
-  try {
-    const result = applyPdsTestOverride(await scoreActivity(scoringInput), actorPdsHost)
-
-    try {
-      logActivity({
-        did,
-        rkey: organization.rkey,
-        uri: organization.recordUri,
-        title: merged.displayName,
-        score: result.totalScore,
-        tier: result.tier,
-        breakdown: JSON.stringify(result.breakdown),
-        testSignals: JSON.stringify(result.testSignals),
-        validationNotes: result.validationNotes,
-        labeledAt: new Date().toISOString(),
-      })
-    } catch (err) {
-      logger.error({ err, did, rkey: organization.rkey }, 'Error logging organization row')
-      throw err
-    }
-
-    if (!isRuntimeLabelTier(result.tier)) {
-      throw new Error(`Scoring produced unsupported runtime tier: ${result.tier}`)
-    }
-
-    const currentLabels = await fetchCurrentLabels(did)
-    const currentQualityLabels = [...currentLabels].filter(isRuntimeLabelTier)
-    const profileIngestMode = getProfileIngestMode(profile)
-    const labelAction: OrganizationRecomputeOutcome['labelAction'] = currentQualityLabels.includes(result.tier)
-      ? 'unchanged'
-      : currentQualityLabels.length > 0
-        ? 'negated-and-applied'
-        : 'applied'
-
-    try {
-      if (labelAction !== 'unchanged') {
-        await applyQualityLabel(did, result.tier)
-      }
-    } catch (err) {
-      logger.error({ err, did }, 'Error applying DID label (score still saved)')
-      throw err
-    }
-
-    return {
-      score: result.totalScore,
-      tier: result.tier,
-      labelAction,
-      profileIngestMode,
-    }
-  } catch (err) {
-    logger.error({ err, did, rkey: organization.rkey }, 'Error recomputing organization snapshot')
-    throw err
-  }
-}
-
 async function processPendingOrganizationDeletes(source: 'startup' | 'worker'): Promise<number> {
   const pendingDeletes = getPendingOrganizationDeletes()
   let processed = 0
@@ -289,7 +169,21 @@ async function processPendingOrganizationDeletes(source: 'startup' | 'worker'): 
         'Retrying pending organization DID label negation before cleanup',
       )
 
-      if (!hasMatchingPendingOrganizationDelete(pendingDelete.did, pendingDelete.rkey, pendingDelete.record_uri)) {
+      const result = await withDidLock(pendingDelete.did, async () => {
+        if (!hasMatchingPendingOrganizationDelete(pendingDelete.did, pendingDelete.rkey, pendingDelete.record_uri)) {
+          return { completed: false, negatedCount: 0 }
+        }
+
+        const negatedCount = await negateQualityLabels(pendingDelete.did)
+        const completed = completePendingOrganizationDelete(
+          pendingDelete.did,
+          pendingDelete.rkey,
+          pendingDelete.record_uri,
+        )
+        return { completed, negatedCount }
+      })
+
+      if (!result.completed) {
         logger.info(
           { did: pendingDelete.did, rkey: pendingDelete.rkey, uri: pendingDelete.record_uri, source },
           'Pending organization delete was already superseded; skipped DID label negation and local cleanup',
@@ -297,23 +191,7 @@ async function processPendingOrganizationDeletes(source: 'startup' | 'worker'): 
         continue
       }
 
-      const didNegatedCount = await negateQualityLabels(pendingDelete.did)
-      const completed = completePendingOrganizationDelete(
-        pendingDelete.did,
-        pendingDelete.rkey,
-        pendingDelete.record_uri,
-      )
-
-      if (!completed) {
-        logger.info(
-          { did: pendingDelete.did, rkey: pendingDelete.rkey, uri: pendingDelete.record_uri, source },
-          'Pending organization delete was already superseded; skipped local cleanup',
-        )
-        continue
-      }
-
-      const negatedCount = didNegatedCount
-
+      const negatedCount = result.negatedCount
       processed++
 
       logRecordOutcome({
@@ -343,30 +221,10 @@ export async function reconcileStoredOrganizationSnapshots(): Promise<number> {
   await processPendingOrganizationDeletes('startup')
 
   const snapshots = getAllOrganizationSnapshots()
-
-  for (const snapshot of snapshots) {
-    try {
-      const outcome = await recomputeLabeledOrganizationRow(snapshot.did)
-      if (outcome) {
-        logRecordOutcome({
-          did: snapshot.did,
-          collection: ORGANIZATION_COLLECTION,
-          action: 'reconcile',
-          source: 'startup',
-          score: outcome.score,
-          tier: outcome.tier,
-          labelAction: outcome.labelAction,
-          profileIngestMode: outcome.profileIngestMode,
-        })
-      }
-    } catch (err) {
-      logger.error({ err, did: snapshot.did, rkey: snapshot.rkey }, 'Startup reconciliation failed; queued durable recompute retry')
-      enqueueOrganizationRecompute(snapshot.did, 'startup-reconcile-failed')
-    }
-  }
+  const queued = queueSavedOrganizationsNeedingAssessment()
 
   if (snapshots.length > 0) {
-    logger.info({ count: snapshots.length }, 'Reconciled local organization snapshots on startup')
+    logger.info({ count: snapshots.length, queued }, 'Queued saved organization snapshots needing Jev assessment')
   } else {
     logger.info('No local organization snapshots found for startup reconciliation')
   }
@@ -375,36 +233,40 @@ export async function reconcileStoredOrganizationSnapshots(): Promise<number> {
 }
 
 async function handleOrganizationDelete(did: string, rkey: string): Promise<void> {
-  const organization = getOrganizationSnapshot(did)
-  const recordUri = organization?.recordUri ?? `at://${did}/${ORGANIZATION_COLLECTION}/${rkey}`
+  await withDidLock(did, async () => {
+    const organization = getOrganizationSnapshot(did)
+    const recordUri = organization?.recordUri ?? `at://${did}/${ORGANIZATION_COLLECTION}/${rkey}`
 
-  upsertPendingOrganizationDelete(did, rkey, recordUri)
-  deleteOrganizationRecordState(did, rkey)
+    upsertPendingOrganizationDelete(did, rkey, recordUri)
+    deleteOrganizationRecordState(did, rkey)
 
-  logRecordOutcome({
-    did,
-    collection: ORGANIZATION_COLLECTION,
-    action: 'delete',
-    source: 'live',
-    labelAction: 'delete-queued',
-    profileIngestMode: getProfileIngestMode(getProfileSnapshot(did)),
+    logRecordOutcome({
+      did,
+      collection: ORGANIZATION_COLLECTION,
+      action: 'delete',
+      source: 'live',
+      labelAction: 'delete-queued',
+      profileIngestMode: getProfileIngestMode(getProfileSnapshot(did)),
+    })
   })
 }
 
 async function handleProfileDelete(did: string): Promise<void> {
-  deleteProfileSnapshot(did)
+  await withDidLock(did, async () => {
+    deleteProfileSnapshot(did)
 
-  if (getOrganizationSnapshot(did)) {
-    enqueueOrganizationRecompute(did, 'profile-delete')
-  }
+    if (getOrganizationSnapshot(did)) {
+      enqueueOrganizationRecompute(did, 'profile-delete')
+    }
 
-  logRecordOutcome({
-    did,
-    collection: PROFILE_COLLECTION,
-    action: 'delete',
-    source: 'live',
-    labelAction: getOrganizationSnapshot(did) ? 'recompute-queued' : 'profile-deleted',
-    profileIngestMode: 'missing',
+    logRecordOutcome({
+      did,
+      collection: PROFILE_COLLECTION,
+      action: 'delete',
+      source: 'live',
+      labelAction: getOrganizationSnapshot(did) ? 'recompute-queued' : 'profile-deleted',
+      profileIngestMode: 'missing',
+    })
   })
 }
 
@@ -430,15 +292,11 @@ indexer.record(async (evt) => {
       }
 
       const parsed = $safeParseProfile(evt.record)
+      let payload: ProfileSnapshot['payload']
+      let validationNotes: string[]
       if (parsed.success) {
-        upsertProfileSnapshot({
-          did: evt.did,
-          recordUri: `at://${evt.did}/${PROFILE_COLLECTION}/${evt.rkey}`,
-          rkey: evt.rkey,
-          payload: parsed.value,
-          validationNotes: [],
-          updatedAt: new Date().toISOString(),
-        })
+        payload = parsed.value
+        validationNotes = []
       } else {
         const fallback = salvageProfileFallback(evt.record)
         const preserved = fallback.mode === 'fallback'
@@ -468,27 +326,32 @@ indexer.record(async (evt) => {
           return
         }
 
+        payload = fallback.profile as ProfileSnapshot['payload']
+        validationNotes = fallback.validationNotes
+      }
+
+      await withDidLock(evt.did, async () => {
         upsertProfileSnapshot({
           did: evt.did,
           recordUri: `at://${evt.did}/${PROFILE_COLLECTION}/${evt.rkey}`,
           rkey: evt.rkey,
-          payload: fallback.profile as ProfileSnapshot['payload'],
-          validationNotes: fallback.validationNotes,
+          payload,
+          validationNotes,
           updatedAt: new Date().toISOString(),
         })
-      }
 
-      if (getOrganizationSnapshot(evt.did)) {
-        enqueueOrganizationRecompute(evt.did, 'profile-upsert')
-      }
+        if (getOrganizationSnapshot(evt.did)) {
+          enqueueOrganizationRecompute(evt.did, 'profile-upsert')
+        }
 
-      logRecordOutcome({
-        did: evt.did,
-        collection: PROFILE_COLLECTION,
-        action: evt.action,
-        source: 'live',
-        labelAction: getOrganizationSnapshot(evt.did) ? 'recompute-queued' : 'profile-saved',
-        profileIngestMode: getProfileIngestMode(getProfileSnapshot(evt.did)),
+        logRecordOutcome({
+          did: evt.did,
+          collection: PROFILE_COLLECTION,
+          action: evt.action,
+          source: 'live',
+          labelAction: getOrganizationSnapshot(evt.did) ? 'recompute-queued' : 'profile-saved',
+          profileIngestMode: getProfileIngestMode(getProfileSnapshot(evt.did)),
+        })
       })
 
       return
@@ -515,24 +378,26 @@ indexer.record(async (evt) => {
       return
     }
     const record = parsed.value as ActivityRecord
-    deletePendingOrganizationDelete(evt.did)
-    upsertOrganizationSnapshot({
-      did: evt.did,
-      recordUri: `at://${evt.did}/${ORGANIZATION_COLLECTION}/${evt.rkey}`,
-      rkey: evt.rkey,
-      payload: record,
-      updatedAt: new Date().toISOString(),
-    })
+    await withDidLock(evt.did, async () => {
+      deletePendingOrganizationDelete(evt.did)
+      upsertOrganizationSnapshot({
+        did: evt.did,
+        recordUri: `at://${evt.did}/${ORGANIZATION_COLLECTION}/${evt.rkey}`,
+        rkey: evt.rkey,
+        payload: record,
+        updatedAt: new Date().toISOString(),
+      })
 
-    enqueueOrganizationRecompute(evt.did, 'organization-upsert')
+      enqueueOrganizationRecompute(evt.did, 'organization-upsert')
 
-    logRecordOutcome({
-      did: evt.did,
-      collection: ORGANIZATION_COLLECTION,
-      action: evt.action,
-      source: 'live',
-      labelAction: 'recompute-queued',
-      profileIngestMode: getProfileIngestMode(getProfileSnapshot(evt.did)),
+      logRecordOutcome({
+        did: evt.did,
+        collection: ORGANIZATION_COLLECTION,
+        action: evt.action,
+        source: 'live',
+        labelAction: 'recompute-queued',
+        profileIngestMode: getProfileIngestMode(getProfileSnapshot(evt.did)),
+      })
     })
   } finally {
     observeTapHandlerDuration(evt.collection, evt.action, performance.now() - startedAt)
@@ -543,51 +408,34 @@ indexer.error((err) => {
   logger.error({ err }, 'SimpleIndexer error')
 })
 
-// Backfill HF classification for any activities that were ingested before HF was available
-// or that failed classification previously. Uses the stored display name as a fallback.
-export function backfillHfClassification(): void {
-  // Re-evaluate existing HF results against current thresholds (catches threshold changes)
-  const reclassified = reevaluateExistingClassifications()
-  if (reclassified > 0) {
-    logger.info({ count: reclassified }, 'Re-evaluated HF classifications against updated thresholds')
-  }
-
-  // Then backfill any that have no HF classification at all
-  const unclassified = getUnclassifiedActivities()
-  if (unclassified.length === 0) {
-    logger.info('All activities have HF classification')
-    return
-  }
-  logger.info({ count: unclassified.length }, 'Backfilling HF classification for unclassified activities')
-  for (const { did, rkey, title } of unclassified) {
-    // We only have the stored display name from the DB query — enqueue with that fallback text.
-    enqueueClassification(title, did, rkey)
-  }
-}
-
 export async function syncLabelsWithDb(): Promise<void> {
-  const activities = getAllActivitiesForSync()
+  const assessments = getAllJevAssessments().filter(
+    assessment => assessment.status === 'assessed'
+      && assessment.labelStatus === 'current'
+      && assessment.publishedTier !== null,
+  )
   let synced = 0
 
-  for (const activity of activities) {
+  for (const assessment of assessments) {
+    const tier = assessment.publishedTier
+    if (!tier) continue
+
     try {
-      if (!isRuntimeLabelTier(activity.tier)) {
-        continue
-      }
+      const currentLabels = await fetchCurrentLabels(assessment.did)
+      const currentQuality = [...currentLabels].filter(label =>
+        label === 'likely-test' || label === 'standard' || label === 'high-quality',
+      )
 
-      const currentLabels = await fetchCurrentLabels(activity.did)
-      const currentQuality = [...currentLabels].filter(isRuntimeLabelTier)
-      const dbTier = activity.tier as RuntimeLabelTier
-
-      // If the ATProto DID label doesn't match the DB tier, update it
-      if (!currentQuality.includes(dbTier)) {
-        logger.info({ did: activity.did, dbTier, atprotoLabels: currentQuality }, 'Syncing mismatched DID label')
-        await applyQualityLabel(activity.did, dbTier)
+      if (!currentQuality.includes(tier)) {
+        logger.info(
+          { did: assessment.did, tier, atprotoLabels: currentQuality },
+          'Syncing current Jev assessment label',
+        )
+        await applyQualityLabel(assessment.did, tier)
         synced++
       }
-
     } catch (err) {
-      logger.warn({ err, did: activity.did, uri: activity.uri }, 'Failed to sync label, continuing')
+      logger.warn({ err, did: assessment.did, uri: assessment.uri }, 'Failed to sync label, continuing')
     }
   }
 
@@ -600,7 +448,7 @@ export async function syncLabelsWithDb(): Promise<void> {
 
 /**
  * Starts the durable recompute loop that drains debounced actor jobs after Tap
- * events have been acknowledged. The worker performs scoring, actor PDS resolution,
+ * events have been acknowledged. The worker performs Jev assessment, actor PDS resolution,
  * label writes, and pending delete cleanup outside the Tap handler.
  */
 export function startRecomputeWorker(): { destroy: () => void } {
@@ -626,11 +474,15 @@ export function startRecomputeWorker(): { destroy: () => void } {
         try {
           if (currentJob.kind === 'resolve-actor-pds') {
             const resolved = await resolveAndCacheActorPds(currentJob.key)
-            enqueueOrganizationRecompute(currentJob.key, 'actor-pds-resolved')
+            const payload = parseRecomputePayload(currentJob.payload)
+            queueOrganizationAssessment(currentJob.key, 'actor-pds-resolved', {
+              force: payload.force,
+              runIds: payload.runIds,
+            })
             completeRecomputeJob(currentJob.id)
             logger.info(
               { did: currentJob.key, pdsUrl: resolved.pdsUrl, pdsHost: resolved.pdsHost },
-              'Resolved actor PDS and queued organization recompute',
+              'Resolved actor PDS and queued Jev assessment',
             )
             job = claimDueRecomputeJob()
             continue
@@ -642,19 +494,17 @@ export function startRecomputeWorker(): { destroy: () => void } {
             continue
           }
 
-          const outcome = await recomputeLabeledOrganizationRow(currentJob.key)
-          if (outcome) {
+          const payload = parseRecomputePayload(currentJob.payload)
+          const outcome = await processOrganizationAssessment(currentJob.key, payload)
+          if (outcome !== 'deleted') {
             enqueueUrlChecksForDid(currentJob.key)
-            refreshHfClassification(currentJob.key)
             logRecordOutcome({
               did: currentJob.key,
               collection: ORGANIZATION_COLLECTION,
-              action: 'recompute',
+              action: 'assess',
               source: 'worker',
-              score: outcome.score,
-              tier: outcome.tier,
-              labelAction: outcome.labelAction,
-              profileIngestMode: outcome.profileIngestMode,
+              labelAction: outcome,
+              profileIngestMode: getProfileIngestMode(getProfileSnapshot(currentJob.key)),
             })
           }
 
@@ -663,11 +513,18 @@ export function startRecomputeWorker(): { destroy: () => void } {
           const message = err instanceof Error ? err.message : String(err)
           const retryDelayMs = retryDelayForAttempt(currentJob.attempts)
 
+          const payload = parseRecomputePayload(currentJob.payload)
           if (currentJob.kind === 'resolve-actor-pds') {
             recordActorPdsFailure(currentJob.key, message, retryDelayMs)
           }
 
           if (currentJob.attempts >= RECOMPUTE_MAX_ATTEMPTS) {
+            if (currentJob.kind === 'resolve-actor-pds') {
+              setJevAssessmentStatus(currentJob.key, 'failed', message)
+            }
+            for (const runId of payload.runIds) {
+              updateReassessmentRunItem(runId, currentJob.key, 'failed')
+            }
             logger.error({ err, job: currentJob }, 'Recompute job exceeded max attempts; leaving failed for inspection')
             failRecomputeJob(currentJob.id, message, RECOMPUTE_MAX_RETRY_DELAY_MS, 'failed')
           } else {

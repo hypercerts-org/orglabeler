@@ -1,16 +1,18 @@
 # Certified Organization Labeler
 
-> Automated quality scoring for merged `app.certified.actor.profile` + `app.certified.actor.organization` data on AT Protocol
+> Jev-based quality assessments for merged `app.certified.actor.profile` + `app.certified.actor.organization` data on AT Protocol
 
-This fork monitors both `app.certified.actor.profile` and `app.certified.actor.organization` records, merges them by DID for display and classification context, and labels actor DIDs based on how complete, consistent, and non-placeholder the organization profile looks.
+This fork monitors both `app.certified.actor.profile` and `app.certified.actor.organization` records, merges them by DID for display and assessment context, and publishes confident quality decisions against actor DIDs. Jev assessments are provisional content-quality signals, not identity or legitimacy verification.
 
 ## Labels
 
-| Label | Score | Meaning |
-|-------|-------|---------|
-| ⚠ Likely Test | signal-based | Explicit test evidence, such as a configured test PDS or obvious placeholder identity data |
-| ● Standard | 0-69 without test signals | A non-test organization record that does not meet the high-quality threshold |
-| ✦ High Quality | 70+ without test signals | A complete organization record with several strong details |
+| Label | Decision | Meaning |
+|-------|----------|---------|
+| ⚠ Likely Test | Configured test-PDS override or confident Jev test-data decision | The actor is on an authoritative test PDS or its records contain contextual evidence of synthetic/test data |
+| ● Standard | Confident Jev decision | Substantive, coherent organization context with standard-level detail |
+| ✦ High Quality | Confident Jev decision | Specific, coherent organization context with substantial useful detail |
+
+Uncertain outcomes do not publish a quality label. An incomplete or ambiguous record is not automatically assigned `standard` or `likely-test`.
 
 ## Quick Start
 
@@ -71,36 +73,29 @@ The Next.js dashboard reads from the configured `ACTIVITY_DB_PATH`.
 
 The labeler auto-detects the account PDS via DID document resolution, so it works across any AT Protocol PDS.
 
-## Scoring
+## Jev assessment
 
-Scores `app.certified.actor.organization` records on 13 completeness signals (100 points total), plus a configurable actor-PDS trust bonus:
+The labeler sends the latest saved `app.certified.actor.profile` and `app.certified.actor.organization` records, plus cached URL-resolution evidence, to Jev in one structured request. Record content is treated as untrusted evidence, not instructions. The assessment is a provisional content-quality signal; it is not identity verification, registration verification, or proof of legitimacy.
 
-| Signal | Max Points | What it checks |
-|--------|-----------|----------------|
-| Display Name | 5 | Uses a real display name instead of DID-only fallback |
-| Description | 10 | Has a profile description |
-| Organization Type | 5 | Includes at least one organization type value |
-| Website Present | 10 | Has a public website URL |
-| Website Resolves | 15 | Valid-looking public website URL, with points removed after confirmed async URL failures |
-| Website Matches Name | 5 | Website domain matches the display name |
-| Organization URLs Present | 5 | Includes at least one organization URL |
-| Organization URLs Resolve | 5 | At least one valid-looking organization URL, with points removed after confirmed async URL failures |
-| Location | 10 | Has a valid organization location reference |
-| Founded Date | 5 | Has a valid founded date |
-| Founded Date Age | 5 | Founded date is at least one year old |
-| Avatar | 10 | Has an avatar image |
-| Banner | 10 | Has a banner image |
-| Trusted PDS Bonus | configurable, default 10 | Actor DID resolves to a PDS host in `TRUSTED_PDS_HOSTS` (`certified.one` and `gainforest.id` by default) |
+Jev returns separate test-data and substantive-purpose probabilities plus a quality choice with probabilities for `high_quality`, `standard`, and `uncertain`. The adapter validates the complete response and applies configurable confidence thresholds. Uncertain evidence stays uncertain and never creates a new quality label. A prior published label is retained and marked stale when evidence changes, when configuration is missing, or when the result is uncertain.
 
-Trusted PDS scoring uses the actor's resolved PDS host, not the profile website or organization URLs. Actor PDS lookup runs through the durable recompute queue; the first record from an uncached actor may be labeled by content score first, then corrected once the actor DID document is resolved.
+Configured `TEST_PDS_HOSTS` are authoritative: matching actors receive `likely-test` without a Jev request. Other saved actors wait in `awaiting-configuration` when `TYPESAFE_API_KEY` is absent; adding a key and restarting queues eligible records for assessment. Forced admin reassessment bypasses current-result reuse and requests fresh inference. `/admin` supports AT Protocol OAuth login for allowlisted DIDs and exposes protected reassessment controls; there is no password fallback.
 
-Test detection is intentionally conservative: hard `testSignals` such as configured `TEST_PDS_HOSTS`, obvious placeholder display names, placeholder domains, or `lorem ipsum` descriptions force ⚠ Likely Test. Softer data-quality issues become `validationNotes` for the dashboard but do not change the tier. Generic words like `test`, `testing`, or `tested` are allowed in profile descriptions, but still show as validation notes in short metadata fields such as organization type or URL labels.
+### Admin access
 
-### URL enrichment
+Admin login uses `@atproto/oauth-client-node` as a confidential server-side OAuth client. It uses PKCE, PAR, and DPoP and requests exactly the `atproto` scope. OAuth tokens are used only during callback verification and are not persisted; the app attempts to revoke them before discarding the temporary SDK session. Successful login creates a separate opaque local session whose token and CSRF values are stored only as hashes. Protected requests recheck the DID allowlist, and mutations require the exact configured origin plus CSRF validation.
 
-Tap handlers never fetch URLs. New records are scored immediately with optimistic provisional URL resolve points for valid-looking public URLs. A detachable in-process URL enrichment worker checks those URLs later, stores results in the independent `url_checks` cache table, and queues a recompute only when cached URL state changes.
+Configure `ADMIN_DIDS`, a stable public `ADMIN_ORIGIN`, `ADMIN_OAUTH_SIGNING_KEY`, and `ADMIN_OAUTH_ENCRYPTION_KEY`. The metadata, JWKS, and callback URLs are derived from the origin:
 
-When `TEST_PDS_HOSTS` is configured, URL enrichment is PDS-aware: it defers URL checks until the actor PDS cache is fresh, skips actors on configured test PDS hosts, and only checks URLs for actors on non-test PDS hosts. Set `URL_ENRICHMENT_ENABLED=false` to disable URL checks completely. When disabled, scoring keeps the provisional URL behavior and does not depend on the `url_checks` table.
+- Client metadata: `/api/admin/oauth/client-metadata`
+- Public signing keys: `/api/admin/oauth/jwks`
+- OAuth callback: `/api/admin/oauth/callback`
+
+`ADMIN_OAUTH_SIGNING_KEY` is a stable base64-encoded, unencrypted P-256 PKCS#8 private-key PEM. `ADMIN_OAUTH_ENCRYPTION_KEY` is 32 random bytes encoded as 64 hexadecimal characters; it encrypts the short-lived PKCE/DPoP pre-auth state in the activity database. Keep both secrets stable and in the deployment secret manager; changing the encryption key invalidates in-flight logins. Never commit either value. Production requires HTTPS. `http://localhost` is accepted for development, but an external authorization server may be unable to fetch the local JWKS URL; use an HTTPS development tunnel for end-to-end OAuth testing if the provider cannot handle loopback metadata.
+
+### URL evidence
+
+Tap handlers never fetch URLs. The separate URL-enrichment worker stores resolution state in the `url_checks` cache and queues assessment work when that evidence changes. With `TEST_PDS_HOSTS` configured, URL checks wait for actor PDS resolution, skip matching test PDS hosts, and run only for known non-test PDS hosts. Set `URL_ENRICHMENT_ENABLED=false` to disable external URL checks; assessments continue using cached or unknown URL evidence.
 
 ## Scripts
 
@@ -142,14 +137,23 @@ The code defaults are shown below. `.env.example` uses local SQLite paths for de
 | `METRICS_PORT` | `4101` | Prometheus metrics port |
 | `TAP_URL` | empty; required | URL of the separate Tap service; there is no localhost fallback |
 | `TAP_ADMIN_PASSWORD` | empty | App-side password for Tap admin auth; must match the Tap service when auth is enabled |
-| `ACTIVITY_DB_PATH` | `/data/activity-log.db` | Dashboard activity log SQLite database path |
+| `ACTIVITY_DB_PATH` | `/data/activity-log.db` | SQLite database for actor snapshots, assessments, durable jobs, admin sessions, and encrypted short-lived OAuth login state |
 | `LABELS_DB_PATH` | `/data/labels.db` | AT Protocol label SQLite database path used by `@skyware/labeler` |
 | `RESET_DB` | unset | When set to `true`, deletes configured app database files plus WAL/SHM files on startup; remove it after the reset |
-| `TEST_PDS_HOSTS` | empty | Comma-separated PDS hosts whose actors should always be labeled `likely-test`; when set, URL enrichment waits for actor PDS resolution and skips matching test PDS hosts |
-| `TRUSTED_PDS_HOSTS` | `certified.one,gainforest.id` | Comma-separated PDS hosts whose actors receive the trusted-PDS score bonus |
-| `TRUSTED_PDS_BONUS` | `10` | Score points added when an actor's resolved PDS host matches `TRUSTED_PDS_HOSTS`; set to `0` to disable the bonus |
+| `TEST_PDS_HOSTS` | empty | Comma-separated PDS hosts whose actors are authoritatively labeled `likely-test`; URL checks wait for PDS resolution and skip matching hosts |
+| `TYPESAFE_API_KEY` | empty | TypeSafe API key for Jev; without it saved non-test records wait for configuration and new non-test labels are not assigned |
+| `JEV_MODEL` | `jev-latest` | TypeSafe model identifier used for assessment requests |
+| `JEV_REQUEST_TIMEOUT_MS` | `15000` | Maximum time allowed for one TypeSafe request |
+| `JEV_TEST_THRESHOLD` | `0.98` | Minimum test-data probability that produces `likely-test` |
+| `JEV_MAX_TEST_PROBABILITY_FOR_QUALITY` | `0.02` | Maximum test-data probability allowed before considering quality tiers |
+| `JEV_PURPOSE_THRESHOLD` | `0.95` | Minimum substantive-purpose probability required for a quality label |
+| `JEV_QUALITY_THRESHOLD` | `0.95` | Minimum confidence required for a standard or high-quality label |
+| `ADMIN_DIDS` | empty | Comma-separated verified admin DID allowlist; only these identities can sign in |
+| `ADMIN_ORIGIN` | empty | Stable exact dashboard origin for OAuth metadata/callback URLs and mutation-origin checks; HTTPS in production (`http://localhost` for development) |
+| `ADMIN_OAUTH_SIGNING_KEY` | empty | Stable base64-encoded P-256 PKCS#8 private key used for confidential OAuth client assertions; keep in the secret manager |
+| `ADMIN_OAUTH_ENCRYPTION_KEY` | empty | 32-byte encryption key as 64 hex characters for encrypted, short-lived OAuth PKCE/DPoP state |
+| `ADMIN_SESSION_TTL_MS` | `28800000` | Maximum server-side admin session lifetime |
 | `HYPERSCAN_RECORD_URL_BASE` | `https://hyperscan.dev/data` | Base URL used when the dashboard links to source AT Protocol records |
-| `HF_TOKEN` | empty | Optional Hugging Face token; when set, enables the zero-shot authenticity classifier |
 | `URL_ENRICHMENT_ENABLED` | `true` | Enables async URL checks through the detachable `url_checks` cache |
 | `URL_CHECK_INTERVAL_MS` | `1000` | Poll interval for processing due URL checks |
 | `URL_CHECK_DISCOVERY_INTERVAL_MS` | `30000` | How often the URL worker scans local snapshots for newly referenced URLs |
@@ -158,7 +162,7 @@ The code defaults are shown below. `.env.example` uses local SQLite paths for de
 | `URL_CHECK_FAILED_TTL_MS` | `86400000` | Downgrade window for hard failed URL checks before another attempt |
 | `URL_CHECK_RETRY_BASE_MS` | `300000` | Initial retry delay for temporary URL check failures |
 | `URL_CHECK_MAX_RETRY_MS` | `3600000` | Maximum retry delay for temporary URL check failures |
-| `URL_CHECK_HARD_FAILURE_ATTEMPTS` | `2` | Number of hard failures required before URL scoring removes resolve points |
+| `URL_CHECK_HARD_FAILURE_ATTEMPTS` | `2` | Hard failures required before URL evidence is recorded as failed |
 | `URL_CHECK_MAX_URLS_PER_DID` | `5` | Maximum profile/organization URLs cached and checked per DID |
 
 Tap runtime settings belong on the Tap service. If the Tap service sets `TAP_ADMIN_PASSWORD`, set the same value on the app service so health checks and the Tap WebSocket can authenticate.

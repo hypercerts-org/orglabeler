@@ -4,9 +4,9 @@ import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { StatsOverview } from '@/components/StatsOverview'
 import { ActivityFeed } from '@/components/ActivityFeed'
-import type { LabelStats, ActivityLogEntry } from '@/lib/types'
+import type { LabelStats, AssessmentFeedEntry } from '@/lib/types'
 
-function normalizeActivity(entry: ActivityLogEntry): ActivityLogEntry {
+function normalizeActivity(entry: AssessmentFeedEntry): AssessmentFeedEntry {
   return {
     ...entry,
     validationNotes: Array.isArray(entry.validationNotes) ? entry.validationNotes : [],
@@ -15,7 +15,7 @@ function normalizeActivity(entry: ActivityLogEntry): ActivityLogEntry {
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<LabelStats | null>(null)
-  const [activities, setActivities] = useState<ActivityLogEntry[]>([])
+  const [activities, setActivities] = useState<AssessmentFeedEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -29,7 +29,7 @@ export default function DashboardPage() {
       const statsData = await statsRes.json()
       const recentData = await recentRes.json()
       setStats(statsData.stats)
-      setActivities((recentData.activities as ActivityLogEntry[]).map(normalizeActivity))
+      setActivities((recentData.activities as AssessmentFeedEntry[]).map(normalizeActivity))
       setError(null)
     } catch (error) {
       console.error('Failed to fetch dashboard data:', error)
@@ -74,7 +74,7 @@ export default function DashboardPage() {
       {/* Empty state when no activities */}
       {!loading && stats && stats.total === 0 && (
         <div className='text-center py-12 text-muted-foreground text-sm italic'>
-          <p>No organization records scored yet.</p>
+          <p>No organization records are being assessed yet.</p>
           <p>
             The labeler process will analyze new app.certified.actor.organization records as they
             appear on the network.

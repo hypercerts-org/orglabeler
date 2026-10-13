@@ -7,7 +7,7 @@ This is the **Certified Organization Labeler** fork — an AT Protocol labeler f
 ```
 src/
 ├── app/                    # Next.js App Router (dashboard)
-│   ├── api/               # API routes (read from configured ACTIVITY_DB_PATH)
+│   ├── api/               # Public read routes and fail-closed admin routes
 │   ├── feed/              # Feed page with tier filtering
 │   ├── globals.css        # Tailwind v4 design system (OKLCH)
 │   ├── layout.tsx         # Root layout with fonts + theme
@@ -22,10 +22,12 @@ src/
 │   └── reset-db.ts        # Database reset utility
 └── lib/                   # Shared code (used by BOTH labeler and dashboard)
     ├── config.ts          # Environment config
-    ├── constants.ts       # Label definitions + scoring thresholds
-    ├── db.ts              # SQLite activity log (better-sqlite3)
+    ├── actor-evidence.ts  # Merged record and URL evidence for Jev
+    ├── admin-auth.ts      # Admin session checks, DID allowlist, CSRF/origin policy
+    ├── constants.ts       # Label definitions
+    ├── db.ts              # SQLite snapshots, assessments, jobs, and sessions
+    ├── jev.ts             # TypeSafe Jev adapter and conservative decision policy
     ├── resolve-pds.ts     # PDS resolution from DID document
-    ├── scorer.ts          # Activity record scoring engine
     └── types.ts           # TypeScript interfaces (zero runtime imports)
 ```
 
@@ -34,9 +36,10 @@ src/
 1. **src/labeler/ must NEVER import from React or Next.js** — it runs as a standalone Node.js process
 2. **src/lib/ is shared** — importable by both labeler and Next.js, but must not import from src/labeler/
 3. **src/components/ and src/app/ are Next.js only** — they can import from src/lib/ but never from src/labeler/
-4. **Two app databases**: `LABELS_DB_PATH` (AT Proto, managed by @skyware/labeler) and `ACTIVITY_DB_PATH` (dashboard, managed by src/lib/db.ts)
-5. **Design system**: Tailwind CSS v4, OKLCH colors (hue 260), Syne display font, no component libraries
-6. **Code style**: no semicolons, single quotes, 2-space indent
+4. **Two app databases**: `LABELS_DB_PATH` (AT Proto, managed by @skyware/labeler) and `ACTIVITY_DB_PATH` (snapshots, assessments, jobs, admin sessions, and encrypted short-lived OAuth login state, managed by src/lib/db.ts)
+5. **Admin security**: allowlisted DIDs, opaque server-side sessions, exact-origin and CSRF checks for mutations; OAuth session issuance must follow official-client identity verification
+6. **Design system**: Tailwind CSS v4, OKLCH colors (hue 260), Syne display font, no component libraries
+7. **Code style**: no semicolons, single quotes, 2-space indent
 
 ## Development
 

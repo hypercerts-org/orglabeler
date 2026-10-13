@@ -58,18 +58,27 @@ Storage:
 
 | Variable | Description | Code default | Railway example |
 |----------|-------------|--------------|-----------------|
-| `ACTIVITY_DB_PATH` | Activity log SQLite path | `/data/activity-log.db` | `/app/data/activity-log.db` |
+| `ACTIVITY_DB_PATH` | SQLite path for snapshots, assessments, jobs, admin sessions, and encrypted OAuth login state | `/data/activity-log.db` | `/app/data/activity-log.db` |
 | `LABELS_DB_PATH` | Label records SQLite path | `/data/labels.db` | `/app/data/labels.db` |
 
 Optional:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `HF_TOKEN` | Enables Hugging Face scoring | _(empty)_ |
+| `TYPESAFE_API_KEY` | Enables Jev assessment; without it saved records wait for configuration | _(empty)_ |
+| `JEV_MODEL` | TypeSafe model identifier | `jev-latest` |
+| `JEV_REQUEST_TIMEOUT_MS` | TypeSafe request timeout | `15000` |
+| `JEV_TEST_THRESHOLD` | Test-data threshold for `likely-test` | `0.98` |
+| `JEV_MAX_TEST_PROBABILITY_FOR_QUALITY` | Maximum test probability allowed for quality labels | `0.02` |
+| `JEV_PURPOSE_THRESHOLD` | Minimum substantive-purpose probability | `0.95` |
+| `JEV_QUALITY_THRESHOLD` | Minimum quality confidence | `0.95` |
 | `HYPERSCAN_RECORD_URL_BASE` | Base URL for dashboard links to source AT Protocol records | `https://hyperscan.dev/data` |
 | `TEST_PDS_HOSTS` | PDS hosts whose actors should always be labeled `likely-test` | _(empty)_ |
-| `TRUSTED_PDS_HOSTS` | PDS hosts whose actors receive the trusted-PDS score bonus | `certified.one,gainforest.id` |
-| `TRUSTED_PDS_BONUS` | Score points added for trusted actor PDS hosts | `10` |
+| `ADMIN_DIDS` | Comma-separated admin DID allowlist; empty or invalid values deny access | _(empty)_ |
+| `ADMIN_ORIGIN` | Stable exact dashboard origin; HTTPS in production (`http://localhost` for development) | _(empty)_ |
+| `ADMIN_OAUTH_SIGNING_KEY` | Stable base64-encoded unencrypted P-256 PKCS#8 private-key PEM for OAuth client assertions | _(secret)_ |
+| `ADMIN_OAUTH_ENCRYPTION_KEY` | 32 random bytes as 64 hex characters; encrypts temporary OAuth PKCE/DPoP state in `ACTIVITY_DB_PATH` | _(secret)_ |
+| `ADMIN_SESSION_TTL_MS` | Maximum local admin session lifetime | `28800000` |
 | `NEXT_PUBLIC_SITE_URL` | Dashboard metadata base URL | `VERCEL_URL` or `http://localhost:3000` |
 | `NEXT_PUBLIC_COMMIT_SHA` | Optional deployment SHA shown in the footer | `RAILWAY_GIT_COMMIT_SHA` when available |
 | `NEXT_PUBLIC_DEPLOY_TIME` | Optional deployment timestamp shown in the footer | image build time via `scripts/build.sh` |
@@ -86,8 +95,12 @@ Optional:
 | `URL_CHECK_FAILED_TTL_MS` | Downgrade window for hard failed URL checks | `86400000` |
 | `URL_CHECK_RETRY_BASE_MS` | Initial retry delay for temporary failures | `300000` |
 | `URL_CHECK_MAX_RETRY_MS` | Maximum retry delay for temporary failures | `3600000` |
-| `URL_CHECK_HARD_FAILURE_ATTEMPTS` | Hard failures needed before URL scoring removes resolve points | `2` |
+| `URL_CHECK_HARD_FAILURE_ATTEMPTS` | Hard failures needed before URL evidence is recorded as failed | `2` |
 | `URL_CHECK_MAX_URLS_PER_DID` | Maximum profile/organization URLs cached and checked per DID | `5` |
+
+Admin login at `/admin` uses the official Node OAuth client and requests exactly the `atproto` scope. The stable client metadata, public JWKS, and callback routes derive from `ADMIN_ORIGIN`: `/api/admin/oauth/client-metadata`, `/api/admin/oauth/jwks`, and `/api/admin/oauth/callback`. Set all four OAuth variables before deployment and keep the signing/encryption keys stable in Railway's secret variables. Generate keys outside the deployment environment; never commit them. Rotating the encryption key invalidates logins already in progress. Tokens are not persisted after callback verification; remote revocation is attempted before the temporary SDK session is discarded. There is no shared-password fallback.
+
+Production requires HTTPS. Although the app accepts `http://localhost` for development, an external OAuth server may be unable to fetch the local JWKS endpoint. Use a publicly reachable HTTPS development tunnel if the provider cannot handle loopback metadata.
 
 Start the app with:
 
