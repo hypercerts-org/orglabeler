@@ -23,7 +23,7 @@ import {
   getActorPdsCache,
   getOrganizationSnapshot,
   getProfileSnapshot,
-  getUrlResolutionMap,
+  getPersistedUrlResolutionMap,
   hasPendingOrganizationDelete,
   getJevAssessment,
   getAllOrganizationSnapshots,
@@ -302,7 +302,7 @@ function buildAssessmentContext(did: string): AssessmentContext | null {
   const normalizedUrls = urls
     .map(item => normalizePublicWebsiteUrl(item.url))
     .filter((url): url is string => Boolean(url))
-  const resolutions = getUrlResolutionMap(normalizedUrls)
+  const resolutions = getPersistedUrlResolutionMap(normalizedUrls)
   const urlEvidence = urls.map(item => {
     const normalizedUrl = normalizePublicWebsiteUrl(item.url)
     return {

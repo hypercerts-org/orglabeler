@@ -27,6 +27,7 @@
   "dependencies": {
     "@atproto/api": "0.19.9",
     "@atproto/crypto": "^0.4.5",
+    "@atproto/jwk-jose": "^0.2.4",
     "@atproto/lex": "^0.0.20",
     "@atproto/oauth-client-node": "^0.5.9",
     "@atproto/tap": "0.2.13",

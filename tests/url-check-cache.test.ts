@@ -12,6 +12,7 @@ const {
   closeDb,
   getDb,
   getDueUrlCheck,
+  getPersistedUrlResolutionMap,
   recordUrlCheckFailure,
   recordUrlCheckOk,
   upsertPendingUrlCheck,
@@ -63,4 +64,28 @@ test('expired ok URL checks are refreshed as new pending checks', () => {
   assert.equal(due.status, 'pending')
   assert.equal(due.attempts, 0)
   assert.equal(due.statusCode, null)
+  assert.deepEqual(getPersistedUrlResolutionMap([url]), { [url]: 'ok' })
+})
+
+test('expiry preserves prior evidence only until a pending recheck completes', () => {
+  const unknownUrl = 'https://pending.example.org/'
+  upsertPendingUrlCheck(unknownUrl)
+  assert.deepEqual(getPersistedUrlResolutionMap([unknownUrl]), {})
+
+  const url = 'https://retry.example.org/'
+  upsertPendingUrlCheck(url)
+  recordUrlCheckOk(url, 200, -1000)
+  upsertPendingUrlCheck(url)
+  assert.deepEqual(getPersistedUrlResolutionMap([url]), { [url]: 'ok' })
+
+  recordUrlCheckFailure({
+    normalizedUrl: url,
+    status: 'pending',
+    resolvable: null,
+    statusCode: 503,
+    error: 'HTTP 503',
+    attempts: 1,
+    retryAfterMs: 60_000,
+  })
+  assert.deepEqual(getPersistedUrlResolutionMap([url]), {})
 })

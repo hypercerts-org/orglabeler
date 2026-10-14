@@ -53,6 +53,10 @@ function retryDelayForAttempt(attempts: number): number {
 }
 
 function resolutionStateForCheck(check: UrlCheck): UrlResolutionState {
+  // Expiry-triggered pending rows retain this marker until the recheck completes.
+  if (check.status === 'pending' && check.resolvable !== null) {
+    return check.resolvable ? 'ok' : 'failed'
+  }
   if (check.status === 'ok') return 'ok'
   if (check.status === 'failed') return 'failed'
   return 'unknown'

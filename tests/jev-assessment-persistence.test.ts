@@ -18,6 +18,7 @@ const {
   getReassessmentRun,
   initializeJevAssessment,
   saveJevAssessment,
+  setJevAssessmentStatus,
   startReassessmentRun,
   upsertOrganizationSnapshot,
   updateReassessmentRunItem,
@@ -72,6 +73,34 @@ test('assessment updates preserve the last published tier and mark it stale when
   assert.equal(assessment?.resultInputIdentity, 'input-v1')
   assert.equal(assessment?.labelStatus, 'stale')
   assert.equal(assessment?.probabilities?.test_data, 0.01)
+})
+
+test('assessment initialization and status updates persist ISO-8601 UTC timestamps', () => {
+  const did = 'did:example:assessment-timestamps'
+  const uri = `at://${did}/app.certified.actor.organization/org`
+  upsertOrganizationSnapshot({
+    did,
+    rkey: 'org',
+    recordUri: uri,
+    payload: { $type: 'app.certified.actor.organization' } as never,
+  })
+  initializeJevAssessment({
+    did,
+    rkey: 'org',
+    uri,
+    displayName: 'Timestamp Example',
+    inputIdentity: 'timestamp-input',
+  })
+
+  const initialized = getJevAssessment(did)
+  assert.ok(initialized)
+  assert.match(initialized.updatedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
+
+  setJevAssessmentStatus(did, 'awaiting-configuration')
+
+  const updated = getJevAssessment(did)
+  assert.ok(updated)
+  assert.match(updated.updatedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
 })
 
 test('assessment result writes reject an outdated input identity', () => {

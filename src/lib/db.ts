@@ -916,11 +916,12 @@ export function initializeJevAssessment(input: {
   inputIdentity: string
 }): void {
   const db = getDb()
+  const now = new Date().toISOString()
   db.prepare(`
     INSERT INTO jev_assessments
       (did, rkey, uri, display_name, input_identity, result_input_identity, status, published_tier, label_status, updated_at)
     VALUES
-      (@did, @rkey, @uri, @displayName, @inputIdentity, NULL, 'queued', NULL, 'none', datetime('now'))
+      (@did, @rkey, @uri, @displayName, @inputIdentity, NULL, 'queued', NULL, 'none', @now)
     ON CONFLICT(did) DO UPDATE SET
       rkey = excluded.rkey,
       uri = excluded.uri,
@@ -936,8 +937,8 @@ export function initializeJevAssessment(input: {
       END,
       input_identity = excluded.input_identity,
       last_error = CASE WHEN jev_assessments.input_identity != excluded.input_identity THEN NULL ELSE jev_assessments.last_error END,
-      updated_at = datetime('now')
-  `).run({ ...input })
+      updated_at = @now
+  `).run({ ...input, now })
 }
 
 export function getJevAssessment(did: string): JevAssessmentRecord | null {
@@ -968,14 +969,15 @@ export function setJevAssessmentStatus(
   errorMessage: string | null = null,
 ): void {
   const db = getDb()
+  const now = new Date().toISOString()
   db.prepare(`
     UPDATE jev_assessments
     SET status = @status,
         label_status = CASE WHEN published_tier IS NULL THEN 'none' ELSE 'stale' END,
         last_error = @errorMessage,
-        updated_at = datetime('now')
+        updated_at = @now
     WHERE did = @did
-  `).run({ did, status, errorMessage: errorMessage?.slice(0, 1000) ?? null })
+  `).run({ did, status, errorMessage: errorMessage?.slice(0, 1000) ?? null, now })
 }
 
 export function saveJevAssessment(input: {
@@ -1307,7 +1309,7 @@ export function recordActorPdsFailure(did: string, errorMessage: string, retryAf
 
 /**
  * Ensures a normalized public URL has a cache row for async enrichment.
- * Fresh ok/failed rows are left untouched so repeated snapshots do not reset TTLs.
+ * Expired final rows become pending without discarding their last resolution value.
  */
 export function upsertPendingUrlCheck(normalizedUrl: string, now = new Date().toISOString()): void {
   const db = getDb()
@@ -1318,7 +1320,6 @@ export function upsertPendingUrlCheck(normalizedUrl: string, now = new Date().to
       (@normalizedUrl, 'pending', NULL, NULL, NULL, 0, NULL, NULL, @now, datetime('now'), datetime('now'))
     ON CONFLICT(normalized_url) DO UPDATE SET
       status = CASE WHEN url_checks.expires_at <= @now AND url_checks.status != 'pending' THEN 'pending' ELSE url_checks.status END,
-      resolvable = CASE WHEN url_checks.expires_at <= @now AND url_checks.status != 'pending' THEN NULL ELSE url_checks.resolvable END,
       status_code = CASE WHEN url_checks.expires_at <= @now AND url_checks.status != 'pending' THEN NULL ELSE url_checks.status_code END,
       error = CASE WHEN url_checks.expires_at <= @now AND url_checks.status != 'pending' THEN NULL ELSE url_checks.error END,
       attempts = CASE WHEN url_checks.expires_at <= @now AND url_checks.status != 'pending' THEN 0 ELSE url_checks.attempts END,
@@ -1428,6 +1429,29 @@ export function getUrlResolutionMap(normalizedUrls: string[], now = new Date().t
   return states
 }
 
+/** Returns persisted URL evidence, including the last final result preserved on pending retries. */
+export function getPersistedUrlResolutionMap(normalizedUrls: string[]): UrlResolutionMap {
+  const db = getDb()
+  const uniqueUrls = [...new Set(normalizedUrls)].filter(url => url.length > 0)
+  if (uniqueUrls.length === 0) return {}
+
+  const placeholders = uniqueUrls.map(() => '?').join(', ')
+  const rows = db.prepare(`
+    SELECT normalized_url, status, resolvable
+    FROM url_checks
+    WHERE normalized_url IN (${placeholders})
+  `).all(...uniqueUrls) as Array<{ normalized_url: string; status: UrlCheckStatus; resolvable: number | null }>
+
+  const states: UrlResolutionMap = {}
+  for (const row of rows) {
+    const state = persistedUrlCheckStatusToResolutionState(row.status, row.resolvable)
+    if (state !== 'unknown') {
+      states[row.normalized_url] = state
+    }
+  }
+  return states
+}
+
 /** Returns URL cache counts grouped by status for metrics and smoke tests. */
 export function getUrlCheckCounts(): Record<UrlCheckStatus, number> {
   const db = getDb()
@@ -1452,6 +1476,17 @@ function urlCheckStatusToResolutionState(status: UrlCheckStatus): UrlResolutionS
   if (status === 'ok') return 'ok'
   if (status === 'failed') return 'failed'
   return 'unknown'
+}
+
+function persistedUrlCheckStatusToResolutionState(
+  status: UrlCheckStatus,
+  resolvable: number | null,
+): UrlResolutionState {
+  // Pending retries retain the prior final result in resolvable; null means no prior result.
+  if (status === 'pending' && resolvable !== null) {
+    return resolvable === 1 ? 'ok' : 'failed'
+  }
+  return urlCheckStatusToResolutionState(status)
 }
 
 export interface AssessmentFeedFilters {

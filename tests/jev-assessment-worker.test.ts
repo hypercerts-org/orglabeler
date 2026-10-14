@@ -19,10 +19,12 @@ process.env.TYPESAFE_API_KEY = 'test-key'
 const {
   closeDb,
   getDb,
+  getDueUrlCheck,
   getJevAssessment,
   getRecomputeJobCounts,
   initializeJevAssessment,
   recordActorPdsOk,
+  recordUrlCheckFailure,
   recordUrlCheckOk,
   saveJevAssessment,
   setJevAssessmentStatus,
@@ -159,6 +161,45 @@ test('URL evidence changes during inference discard the result and retain queued
   assert.equal(getJevAssessment(did)?.publishedTier, null)
   assert.equal(getJevAssessment(did)?.status, 'queued')
   assert.deepEqual([...await fetchCurrentLabels(did)], [])
+})
+
+test('expired URL evidence remains stable through pending refresh and changes after a different result', async () => {
+  const did = 'did:example:url-same-status-after-expiry'
+  storeActor(did)
+  const normalizedUrl = normalizePublicWebsiteUrl('https://example.org')
+  assert.ok(normalizedUrl)
+  upsertPendingUrlCheck(normalizedUrl)
+  recordUrlCheckOk(normalizedUrl, 200, 60_000)
+
+  let calls = 0
+  const fetchImpl = fakeFetch(reply('standard'), () => { calls++ })
+  assert.equal(await processOrganizationAssessment(did, { fetchImpl }), 'assessed')
+  const firstIdentity = getJevAssessment(did)?.inputIdentity
+  assert.ok(firstIdentity)
+
+  recordUrlCheckOk(normalizedUrl, 200, -1000)
+  upsertPendingUrlCheck(normalizedUrl)
+  assert.equal(getDueUrlCheck()?.status, 'pending')
+  assert.equal(await processOrganizationAssessment(did, { fetchImpl }), 'cached')
+  assert.equal(calls, 1)
+  assert.equal(getJevAssessment(did)?.inputIdentity, firstIdentity)
+
+  recordUrlCheckOk(normalizedUrl, 200, 60_000)
+  assert.equal(await processOrganizationAssessment(did, { fetchImpl }), 'cached')
+  assert.equal(calls, 1)
+
+  recordUrlCheckFailure({
+    normalizedUrl,
+    status: 'failed',
+    resolvable: false,
+    statusCode: 404,
+    error: 'HTTP 404',
+    attempts: 1,
+    retryAfterMs: 60_000,
+  })
+  assert.equal(await processOrganizationAssessment(did, { fetchImpl }), 'assessed')
+  assert.equal(calls, 2)
+  assert.notEqual(getJevAssessment(did)?.inputIdentity, firstIdentity)
 })
 
 test('deletion during inference prevents a late result from publishing a DID label', async () => {
