@@ -1,13 +1,8 @@
 import { NextResponse } from 'next/server'
-import { getRecentActivities, getActivitiesByTier, getTotalCount, getAiEvaluatedActivities, getAiEvaluatedCount, searchActivities, searchActivitiesCount } from '@/lib/db'
-import type { ActivityLogEntry, RuntimeLabelTier } from '@/lib/types'
+import { getAssessmentFeedPage } from '@/lib/db'
+import type { RuntimeLabelTier } from '@/lib/types'
 
 const VALID_TIERS: RuntimeLabelTier[] = ['likely-test', 'standard', 'high-quality']
-
-type RecentActivityResponse = Omit<ActivityLogEntry, 'title' | 'breakdown' | 'testSignals'> & {
-  breakdown: Record<string, unknown>
-  testSignals: string[]
-}
 
 export async function GET(request: Request) {
   try {
@@ -15,45 +10,17 @@ export async function GET(request: Request) {
 
     const rawLimit = Number(searchParams.get('limit') ?? 20)
     const rawOffset = Number(searchParams.get('offset') ?? 0)
-    const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(rawLimit, 100)) : 20
-    const offset = Number.isFinite(rawOffset) ? Math.max(0, rawOffset) : 0
+    const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(Math.floor(rawLimit), 100)) : 20
+    const offset = Number.isFinite(rawOffset) ? Math.max(0, Math.floor(rawOffset)) : 0
 
-    const tierParam = searchParams.get('tier') as RuntimeLabelTier | 'all' | null
-    const hfOnly = searchParams.get('hf') === 'true'
-    const searchQuery = searchParams.get('q')?.trim() || ''
+    const tierParam = searchParams.get('tier')
+    const tier = tierParam && VALID_TIERS.includes(tierParam as RuntimeLabelTier)
+      ? tierParam as RuntimeLabelTier
+      : null
+    const query = searchParams.get('q')?.trim() || null
+    const page = getAssessmentFeedPage({ limit, offset, tier, query })
 
-    // Validate tier — if invalid (not one of the active tiers or "all"), treat as "all"
-    const isValidTier = tierParam && tierParam !== 'all' && VALID_TIERS.includes(tierParam as RuntimeLabelTier)
-    const tier = isValidTier ? (tierParam as RuntimeLabelTier) : null
-
-    let activities: ActivityLogEntry[]
-    let total: number
-
-    if (searchQuery) {
-      activities = searchActivities(searchQuery, limit, offset)
-      total = searchActivitiesCount(searchQuery)
-    } else if (hfOnly) {
-      activities = getAiEvaluatedActivities(limit, offset)
-      total = getAiEvaluatedCount()
-    } else if (tier) {
-      activities = getActivitiesByTier(tier, limit, offset)
-      total = getTotalCount(tier)
-    } else {
-      activities = getRecentActivities(limit, offset)
-      total = getTotalCount()
-    }
-
-    // Parse JSON strings in each entry before returning, preserving displayName.
-    const parsed: RecentActivityResponse[] = activities.map(a => {
-      let breakdown: Record<string, unknown> = {}
-      let testSignals: string[] = []
-      try { breakdown = JSON.parse(a.breakdown) } catch { /* use empty */ }
-      try { testSignals = JSON.parse(a.testSignals) } catch { /* use empty */ }
-      const { title: _title, ...rest } = a
-      return { ...rest, breakdown, testSignals, hfLabel: a.hfLabel ?? null, hfScore: a.hfScore ?? null }
-    })
-
-    return NextResponse.json({ activities: parsed, total })
+    return NextResponse.json({ activities: page.assessments, total: page.total })
   } catch (err) {
     console.error('API /api/recent error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

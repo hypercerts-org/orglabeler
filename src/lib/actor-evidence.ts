@@ -8,13 +8,10 @@ export interface MergedOrganizationUrlItem {
   label: string | null
 }
 
-/** Cached URL resolution state used by scoring without performing network I/O. */
 export type UrlResolutionState = 'unknown' | 'ok' | 'failed'
-
-/** Map of normalized public URL to its latest durable resolution state. */
 export type UrlResolutionMap = Record<string, UrlResolutionState>
 
-export interface MergedScoringInput {
+export interface MergedActorEvidence {
   did: string
   displayName: string
   displayNameSource: MergedDisplayNameSource
@@ -27,24 +24,18 @@ export interface MergedScoringInput {
   organizationType: string[]
   urls: MergedOrganizationUrlItem[]
   urlResolution?: UrlResolutionMap
-  /** Normalized actor PDS host from DID resolution, when the durable cache knows it. */
-  actorPdsHost?: string | null
-  /** Exact-match PDS hosts that should receive the trusted-PDS score bonus. */
-  trustedPdsHosts?: readonly string[]
-  /** Number of points to add when actorPdsHost matches trustedPdsHosts. */
-  trustedPdsBonus?: number
   location: OrganizationRecord['location'] | null
   foundedDate: string | null
 }
 
-export interface MergedScoringInputSource {
+export interface MergedActorEvidenceSource {
   did: string
   profile: ProfileRecord | null
   organization: OrganizationRecord | null
   profileValidationNotes?: string[]
 }
 
-const ORGANIZATION_URLS_FOR_SCORING_LIMIT = 4
+const ORGANIZATION_URLS_LIMIT = 4
 
 function normalizeText(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
@@ -65,7 +56,7 @@ function buildDisplayName(
   return { displayName: shortDid(did), displayNameSource: 'did' }
 }
 
-export function buildMergedScoringInput(source: MergedScoringInputSource): MergedScoringInput {
+export function buildMergedActorEvidence(source: MergedActorEvidenceSource): MergedActorEvidence {
   const profileDisplayName = normalizeText(source.profile?.displayName) || null
   const profileDescription = normalizeText(source.profile?.description) || null
   const profileWebsite = normalizeText(source.profile?.website) || null
@@ -81,12 +72,9 @@ export function buildMergedScoringInput(source: MergedScoringInputSource): Merge
       label: normalizeText(item?.label) || null,
     }))
     .filter(item => item.url.length > 0)
-    .slice(0, ORGANIZATION_URLS_FOR_SCORING_LIMIT)
+    .slice(0, ORGANIZATION_URLS_LIMIT)
 
-  const { displayName, displayNameSource } = buildDisplayName(
-    source.did,
-    profileDisplayName,
-  )
+  const { displayName, displayNameSource } = buildDisplayName(source.did, profileDisplayName)
 
   return {
     did: source.did,

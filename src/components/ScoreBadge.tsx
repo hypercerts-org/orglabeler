@@ -1,8 +1,7 @@
-import type { LabelTier, RuntimeLabelTier } from '@/lib/types'
+import type { RuntimeLabelTier } from '@/lib/types'
 
 interface ScoreBadgeProps {
-  tier: LabelTier
-  score?: number
+  tier: RuntimeLabelTier
   size?: 'sm' | 'md'
 }
 
@@ -18,28 +17,16 @@ const TIER_LABELS: Record<RuntimeLabelTier, string> = {
   'likely-test': '⚠ Likely Test',
 }
 
-function toRuntimeTier(tier: LabelTier): RuntimeLabelTier {
-  return tier === 'high-quality' || tier === 'standard' || tier === 'likely-test'
-    ? tier
-    : 'likely-test'
-}
-
-function isRuntimeTier(tier: LabelTier): tier is RuntimeLabelTier {
-  return tier === 'high-quality' || tier === 'standard' || tier === 'likely-test'
-}
-
-export function ScoreBadge({ tier, score, size = 'sm' }: ScoreBadgeProps) {
-  const runtimeTier = toRuntimeTier(tier)
-  const colorClass = TIER_COLORS[runtimeTier]
-  const label = TIER_LABELS[runtimeTier]
-  const displayScore = isRuntimeTier(tier) ? score : undefined
+export function ScoreBadge({ tier, size = 'sm' }: ScoreBadgeProps) {
+  const colorClass = TIER_COLORS[tier]
+  const label = TIER_LABELS[tier]
   const sizeClass = size === 'sm'
     ? 'text-[10px] px-2 py-0.5 rounded-full border font-medium'
     : 'text-xs px-2.5 py-1 rounded-full border font-medium'
 
   return (
     <span className={`inline-flex items-center whitespace-nowrap ${sizeClass} ${colorClass}`}>
-      {label}{displayScore !== undefined ? ` (${displayScore})` : ''}
+      {label}
     </span>
   )
 }

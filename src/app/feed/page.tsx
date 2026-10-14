@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useLayoutEffect, useCallback } from 'react'
 import { ActivityFeed } from '@/components/ActivityFeed'
-import type { ActivityLogEntry, RuntimeLabelTier } from '@/lib/types'
+import { FeedRequestCoordinator, mergeAssessmentFeedEntries, reconcileAssessmentFeedWindow } from '@/lib/assessment-feed'
+import type { AssessmentFeedEntry, RuntimeLabelTier } from '@/lib/types'
 
-function normalizeActivity(entry: ActivityLogEntry): ActivityLogEntry {
+function normalizeActivity(entry: AssessmentFeedEntry): AssessmentFeedEntry {
   return {
     ...entry,
     validationNotes: Array.isArray(entry.validationNotes) ? entry.validationNotes : [],
@@ -19,18 +20,21 @@ const filterOptions: { label: string; value: RuntimeLabelTier | 'all' }[] = [
 ]
 
 const LIMIT = 20
+const MAX_API_LIMIT = 100
 
 export default function FeedPage() {
   const [selectedTier, setSelectedTier] = useState<RuntimeLabelTier | 'all'>('all')
-  const [aiOnly, setAiOnly] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
-  const [activities, setActivities] = useState<ActivityLogEntry[]>([])
+  const [activities, setActivities] = useState<AssessmentFeedEntry[]>([])
   const [total, setTotal] = useState(0)
+  // Tracks API rows consumed; deduplication can make this differ from rendered entry count.
   const [offset, setOffset] = useState(0)
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [requestCoordinator] = useState(() => new FeedRequestCoordinator())
+  const filterIdentity = JSON.stringify([selectedTier, debouncedQuery])
 
   // Debounce search query — 300ms delay
   useEffect(() => {
@@ -38,65 +42,102 @@ export default function FeedPage() {
     return () => clearTimeout(timer)
   }, [searchQuery])
 
-  // Fix #2: remove offset from deps — use currentOffset param instead of closure
+  useLayoutEffect(() => {
+    requestCoordinator.invalidateFilter(filterIdentity)
+  }, [filterIdentity, requestCoordinator])
+
   const fetchActivities = useCallback(
     async (currentOffset: number, reset = false) => {
-      if (reset) setLoading(true)
-      else setLoadingMore(true)
-
-      try {
-        const tierParam = selectedTier === 'all' ? '' : `&tier=${selectedTier}`
-        const hfParam = aiOnly ? '&hf=true' : ''
-        const searchParam = debouncedQuery ? `&q=${encodeURIComponent(debouncedQuery)}` : ''
+      const tierParam = selectedTier === 'all' ? '' : `&tier=${selectedTier}`
+      const searchParam = debouncedQuery ? `&q=${encodeURIComponent(debouncedQuery)}` : ''
+      const requestPage = async () => {
         const res = await fetch(
-          `/api/recent?limit=${LIMIT}&offset=${currentOffset}${tierParam}${hfParam}${searchParam}`
+          `/api/recent?limit=${LIMIT}&offset=${currentOffset}${tierParam}${searchParam}`
         )
         if (!res.ok) throw new Error('API error')
         const data = await res.json()
-
-        if (reset) {
-          setActivities((data.activities as ActivityLogEntry[]).map(normalizeActivity))
-          setOffset(LIMIT)
-        } else {
-          setActivities(prev => [...prev, ...(data.activities as ActivityLogEntry[]).map(normalizeActivity)])
-          setOffset(prev => prev + LIMIT)
+        return {
+          page: (data.activities as AssessmentFeedEntry[]).map(normalizeActivity),
+          total: data.total as number,
         }
-        setTotal(data.total)
-        setError(null)
-      } catch (error) {
-        console.error('Failed to fetch activities:', error)
-        setError('Failed to load data')
-      } finally {
-        setLoading(false)
-        setLoadingMore(false)
       }
+      const callbacks = {
+        apply: ({ page, total }: Awaited<ReturnType<typeof requestPage>>) => {
+          if (reset) {
+            setActivities(mergeAssessmentFeedEntries([], page, 'append'))
+            setOffset(page.length)
+          } else {
+            setActivities(prev => mergeAssessmentFeedEntries(prev, page, 'append'))
+            setOffset(prev => Math.max(prev, currentOffset + page.length))
+          }
+          setTotal(total)
+          setError(null)
+        },
+        onError: (error: unknown) => {
+          console.error('Failed to fetch activities:', error)
+          setError('Failed to load data')
+        },
+        onSettled: () => {
+          setLoading(false)
+          setLoadingMore(false)
+        },
+      }
+      const request = reset
+        ? requestCoordinator.runReset(filterIdentity, requestPage, callbacks)
+        : requestCoordinator.runLoadMore(filterIdentity, requestPage, callbacks)
+      if (!request) return
+
+      if (reset) {
+        setLoading(true)
+        setLoadingMore(false)
+      } else {
+        setLoadingMore(true)
+      }
+      await request
     },
-    [selectedTier, aiOnly, debouncedQuery]  // depend on tier, AI filter, and search query
+    [selectedTier, debouncedQuery, filterIdentity, requestCoordinator]
   )
 
-  // Fix #3: stable poller — only update if newest item changed, DON'T reset offset
+  // Reconcile every loaded API row so polling removes stale membership and preserves the current order.
   const pollFirst = useCallback(async () => {
-    try {
-      const tierParam = selectedTier === 'all' ? '' : `&tier=${selectedTier}`
-      const hfParam = aiOnly ? '&hf=true' : ''
-      const searchParam = debouncedQuery ? `&q=${encodeURIComponent(debouncedQuery)}` : ''
-      const res = await fetch(`/api/recent?limit=${LIMIT}&offset=0${tierParam}${hfParam}${searchParam}`)
-      if (!res.ok) throw new Error('API error')
-      const data = await res.json()
-      setActivities(prev => {
-        const normalizedActivities = (data.activities as ActivityLogEntry[]).map(normalizeActivity)
-        if (normalizedActivities[0]?.uri === prev[0]?.uri) return prev
-        // Merge: replace first page, keep any extra loaded pages
-        return [...normalizedActivities, ...prev.slice(LIMIT)]
-      })
-      setTotal(data.total)
-      // Do NOT reset offset — preserve load-more position
-    } catch (error) {
-      console.error('Failed to poll activities:', error)
-    }
-  }, [selectedTier, aiOnly, debouncedQuery])
+    if (loading || loadingMore) return
 
-  // Reset and re-fetch when tier, AI filter, or search query changes
+    const request = requestCoordinator.runPoll(filterIdentity, async () => {
+      const tierParam = selectedTier === 'all' ? '' : `&tier=${selectedTier}`
+      const searchParam = debouncedQuery ? `&q=${encodeURIComponent(debouncedQuery)}` : ''
+      const requestedRows = Math.max(LIMIT, offset)
+      const pages: AssessmentFeedEntry[][] = []
+      let cursor = 0
+      let currentTotal = 0
+
+      while (cursor < requestedRows && (pages.length === 0 || cursor < currentTotal)) {
+        const limit = Math.min(MAX_API_LIMIT, requestedRows - cursor)
+        const res = await fetch(
+          `/api/recent?limit=${limit}&offset=${cursor}${tierParam}${searchParam}`
+        )
+        if (!res.ok) throw new Error('API error')
+        const data = await res.json()
+        const rows = data.activities as AssessmentFeedEntry[]
+        currentTotal = data.total
+        pages.push(rows.map(normalizeActivity))
+        cursor += rows.length
+        if (rows.length === 0) break
+      }
+
+      return { window: reconcileAssessmentFeedWindow(pages), total: currentTotal }
+    }, {
+      apply: ({ window, total }) => {
+        setActivities(window.activities)
+        setTotal(total)
+        setOffset(Math.min(window.consumedRows, total))
+      },
+      onError: error => console.error('Failed to poll activities:', error),
+    })
+
+    if (request) await request
+  }, [selectedTier, debouncedQuery, filterIdentity, offset, loading, loadingMore, requestCoordinator])
+
+  // Reset and re-fetch when tier or search query changes
   useEffect(() => {
     fetchActivities(0, true)
   }, [fetchActivities])
@@ -119,7 +160,7 @@ export default function FeedPage() {
           Organization Records Feed
         </h1>
         <p className='text-sm text-muted-foreground mt-1'>
-          All detected organization records.
+          Jev assessments, published labels, and records awaiting review.
         </p>
       </div>
 
@@ -149,16 +190,6 @@ export default function FeedPage() {
             </button>
           ))}
         </div>
-        <button
-          onClick={() => setAiOnly(prev => !prev)}
-          className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer border ${
-            aiOnly
-              ? 'bg-primary text-primary-foreground border-primary'
-              : 'border-border text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          🤖 AI Evaluated
-        </button>
         <span className='text-[11px] text-muted-foreground'>
           {total} records
         </span>

@@ -14,7 +14,7 @@ OrgLabeler watches certified actor records:
 - `app.certified.actor.profile`
 - `app.certified.actor.organization`
 
-It merges profile and organization context by actor DID, scores that merged actor context, and publishes a quality-tier label against the **actor DID**.
+It assesses profile and organization context together by actor DID with Jev, then publishes a quality-tier label against the **actor DID** when the result is sufficiently confident.
 
 These instructions are only for OrgLabeler labels from the OrgLabeler source. Do not generalize `likely-test`, `standard`, or `high-quality` to labels from other labelers.
 
@@ -57,17 +57,17 @@ high-quality
 
 Interpretation:
 
-- `likely-test`: hard test or placeholder evidence was found.
-- `standard`: no hard test evidence, but the score is below the high-quality threshold.
-- `high-quality`: no hard test evidence, and the score is at least 70.
+- `likely-test`: configured test-PDS policy matched or Jev found sufficiently strong contextual test-data evidence.
+- `standard`: Jev found a substantive, coherent organization context with standard-level quality confidence.
+- `high-quality`: Jev found a specific, coherent organization context with high-quality confidence.
 
 Important:
 
 - `likely-test` is not a general low-quality bucket.
-- Incomplete real records become `standard`, not `likely-test`.
+- Incomplete real records are not automatically `likely-test`; if evidence is ambiguous or below confidence thresholds, the result can remain uncertain with no new label.
 - Missing labels mean `unknown` or `not labeled yet`, not `standard`.
 - Labels target actor DIDs, not individual `app.certified.actor.profile` or `app.certified.actor.organization` record URIs.
-- The signed AT Protocol label carries the tier. Score breakdowns, test signals, and validation notes are available from dashboard/debug APIs when exposed.
+- The signed AT Protocol label carries only the tier. The dashboard API exposes assessment status, label freshness, model/question/policy versions, probabilities, and validation notes; those details are not part of the signed label.
 
 ## Choose the right integration path
 
@@ -89,7 +89,7 @@ Use dashboard REST APIs for browsing and diagnostics:
 - `GET /api/recent?limit=20&offset=0&tier=high-quality`
 - `GET /api/recent?q=<did-or-name>`
 
-Dashboard APIs may include score, breakdown, `testSignals`, and `validationNotes`. Use them to explain a label, not as the primary signed label stream if the product can consume XRPC labels directly.
+Dashboard APIs expose current assessment status and probabilities for diagnostics. Treat uncertain, awaiting-configuration, awaiting-PDS-resolution, and stale-label states as distinct from the signed active tier. Use dashboard details to explain a label, not as the primary signed label stream if the product can consume XRPC labels directly.
 
 ## Query current labels
 
@@ -266,7 +266,7 @@ Use this flow when an app displays certified actors and wants to hide test data:
 4. Show actors with `standard` or `high-quality`.
 5. Hide actors with `likely-test`.
 6. Decide product behavior for `unknown` actors.
-7. Optionally use `/api/recent?q=<did>` in admin/debug views to explain why an actor received a tier.
+7. Optionally use `/api/recent?q=<did>` in debug views to inspect the assessment status and current probabilities.
 
 ## Dashboard/debug API shapes
 
@@ -283,13 +283,19 @@ Example response:
       "standard": 50,
       "likely-test": 10
     },
+    "byAssessmentStatus": {
+      "queued": 2,
+      "assessing": 1,
+      "assessed": 80,
+      "uncertain": 10,
+      "awaiting-configuration": 5,
+      "awaiting-pds-resolution": 1,
+      "failed": 1,
+      "legacy-stale": 0
+    },
+    "staleLabels": 4,
     "last24h": 5,
-    "last7d": 30,
-    "hfCoverage": {
-      "classified": 20,
-      "pending": 80,
-      "total": 100
-    }
+    "last7d": 30
   }
 }
 ```
@@ -311,34 +317,29 @@ Example response:
 {
   "activities": [
     {
-      "id": 1,
       "did": "did:plc:<actor>",
       "rkey": "record-key",
       "uri": "at://did:plc:<actor>/app.certified.actor.organization/<rkey>",
       "displayName": "Example Org",
-      "score": 82,
-      "tier": "high-quality",
-      "breakdown": {
-        "displayName": 5,
-        "description": 10,
-        "organizationType": 5,
-        "websitePresent": 10,
-        "websiteResolves": 15,
-        "websiteMatchesName": 5,
-        "organizationUrlsPresent": 5,
-        "organizationUrlsResolve": 5,
-        "locationValid": 10,
-        "foundedDateValid": 5,
-        "foundedDateAge": 5,
-        "avatar": 10,
-        "banner": 10,
-        "trustedPds": 0
+      "status": "assessed",
+      "publishedTier": "high-quality",
+      "labelStatus": "current",
+      "model": "jev-latest",
+      "questionVersion": "organization-assessment-questions-v1",
+      "policyVersion": "provisional-confidence-policy-v1",
+      "probabilities": {
+        "test_data": { "type": "noul", "noul": 0.001 },
+        "substantive_purpose": { "type": "noul", "noul": 0.99 },
+        "consistency_quality": {
+          "type": "choice",
+          "choice": "high_quality",
+          "confidence": 0.998,
+          "probabilities": { "high_quality": 0.998, "standard": 0.001, "uncertain": 0.001 }
+        }
       },
-      "testSignals": [],
       "validationNotes": [],
-      "labeledAt": "2026-01-01T00:00:00.000Z",
-      "hfLabel": null,
-      "hfScore": null
+      "updatedAt": "2026-01-01T00:00:00.000Z",
+      "assessedAt": "2026-01-01T00:00:00.000Z"
     }
   ],
   "total": 1
@@ -349,8 +350,7 @@ Supported `/api/recent` parameters:
 
 - `limit`: clamped to 1-100.
 - `offset`: pagination offset, minimum 0.
-- `tier`: `all`, `likely-test`, `standard`, or `high-quality`.
-- `hf=true`: only rows with HuggingFace classification fields.
+- `tier`: `all`, `likely-test`, `standard`, or `high-quality`; filters by published tier.
 - `q`: search by display name, actor DID, or organization record URI.
 
 ## Troubleshooting
@@ -367,7 +367,7 @@ Check:
 
 ### Record looks incomplete but is not `likely-test`
 
-This is expected. `likely-test` only comes from hard test/placeholder evidence. Incomplete non-test records are labeled `standard` unless they reach the `high-quality` threshold.
+This is expected. `likely-test` comes from the configured test-PDS override or sufficiently strong contextual Jev evidence, not incompleteness alone. An incomplete or ambiguous non-test record can remain uncertain and unlabeled; `standard` is published only when Jev's confidence policy is satisfied.
 
 ### Need to know why something is `likely-test`
 
@@ -378,19 +378,15 @@ curl -G "https://orglabeler.hypercerts.dev/api/recent" \
   --data-urlencode "q=did:plc:exampleactor"
 ```
 
-Inspect:
+Inspect `probabilities` when Jev ran; a configured test-PDS override bypasses Jev and may have no Jev probability payload. `validationNotes` describe record parsing/fallback and are not Jev explanations.
 
-- `testSignals`
-- `validationNotes`
-- `breakdown`
+### Need assessment details
 
-### Need exact score
-
-The signed AT Protocol label only carries the tier. Use `/api/recent` for score and breakdown.
+The signed AT Protocol label only carries the tier. Use `/api/recent` to inspect assessment status, label freshness, model/question/policy versions, and current probabilities. This is a content-quality assessment, not identity or legitimacy verification.
 
 ### Label changed unexpectedly
 
-Labels can change after profile updates, organization record updates, URL enrichment, PDS resolution, recomputation, or backfill. Re-query `queryLabels` for the actor DID and rebuild active state.
+Labels can change after profile updates, organization record updates, URL evidence changes, PDS resolution, a forced reassessment, or backfill. Re-query `queryLabels` for the actor DID and rebuild active state.
 
 ## Do not do
 

@@ -27,7 +27,7 @@ At runtime, the labeler process starts:
 
 1. the AT Protocol labeler server on `LABELER_PORT` (default `4100`)
 2. the Prometheus metrics server on `METRICS_PORT` (default `4101`)
-3. the Tap consumer that scores incoming records and writes to SQLite
+3. the Tap consumer that saves records and queues durable Jev assessments
 
 Tap is a separate service. The labeler process connects to it via `TAP_URL` instead of launching it locally, and startup should fail if `TAP_URL` is missing.
 
@@ -70,11 +70,21 @@ If your Tap deployment uses admin auth, configure `TAP_ADMIN_PASSWORD` on the Ta
 
 ### Optional app settings
 
-- `HF_TOKEN` — enables Hugging Face classification; if unset, HF scoring stays disabled
+- `TYPESAFE_API_KEY` — enables Jev assessment; if unset, saved records wait for configuration and existing labels remain marked stale
+- `JEV_MODEL` — TypeSafe model identifier; default `jev-latest`
+- `JEV_REQUEST_TIMEOUT_MS` — TypeSafe request timeout; default `15000`
+- `JEV_TEST_THRESHOLD`, `JEV_MAX_TEST_PROBABILITY_FOR_QUALITY`, `JEV_PURPOSE_THRESHOLD`, `JEV_QUALITY_THRESHOLD` — confidence thresholds; defaults `0.98`, `0.02`, `0.95`, and `0.95`
 - `HYPERSCAN_RECORD_URL_BASE` — base URL used when the dashboard links to source AT Protocol records; default `https://hyperscan.dev/data`
-- `TEST_PDS_HOSTS` — comma-separated PDS hosts whose actors should always be labeled `likely-test`; URL enrichment waits for actor PDS resolution and skips matching test PDS hosts
-- `TRUSTED_PDS_HOSTS` — comma-separated PDS hosts whose actors receive the trusted-PDS score bonus; default `certified.one,gainforest.id`
-- `TRUSTED_PDS_BONUS` — score points added for trusted actor PDS hosts; default `10`
+- `TEST_PDS_HOSTS` — comma-separated authoritative test-PDS overrides; URL enrichment waits for PDS resolution and skips matching hosts
+- `ADMIN_DIDS` — comma-separated allowlist of admin DIDs; empty or invalid values deny access
+- `ADMIN_ORIGIN` — exact stable dashboard origin, HTTPS in production; `http://localhost` is accepted for local development
+- `ADMIN_OAUTH_SIGNING_KEY` — stable base64-encoded unencrypted P-256 PKCS#8 private-key PEM for confidential OAuth client assertions
+- `ADMIN_OAUTH_ENCRYPTION_KEY` — 32 random bytes encoded as 64 hexadecimal characters; encrypts temporary PKCE/DPoP login state stored in `ACTIVITY_DB_PATH`
+- `ADMIN_SESSION_TTL_MS` — maximum local admin session lifetime; default `28800000`
+
+The admin client metadata, public JWKS, and callback URLs derive from `ADMIN_ORIGIN`: `/api/admin/oauth/client-metadata`, `/api/admin/oauth/jwks`, and `/api/admin/oauth/callback`. Configure the origin before deployment and keep both OAuth keys stable in the platform secret manager. Generate and store the keys outside the deployment environment; never commit them. Rotating the encryption key invalidates in-flight logins. The client requests exactly `atproto`; OAuth credentials are not stored after callback verification, and revocation is attempted before the temporary SDK session is discarded.
+
+`http://localhost` is accepted for development, but an external OAuth server may not be able to fetch a JWKS endpoint on the developer's machine. Use an HTTPS development tunnel if the provider cannot handle loopback metadata. Admin mutations continue to require the exact origin and CSRF token; the app has no shared-password fallback.
 - `PORT` — public Caddy HTTP port (hosted platforms usually set this; Caddy fallback `8080`)
 - `NEXT_PORT` — internal Next.js HTTP port (`3000` by default)
 - `HOST` — bind host for the labeler server (`0.0.0.0` by default; `127.0.0.1` is recommended when only same-container Caddy should reach it)
@@ -89,14 +99,14 @@ If your Tap deployment uses admin auth, configure `TAP_ADMIN_PASSWORD` on the Ta
 - `URL_CHECK_FAILED_TTL_MS` — downgrade window for hard failed URL checks before another attempt; default `86400000`
 - `URL_CHECK_RETRY_BASE_MS` — initial retry delay for temporary URL check failures; default `300000`
 - `URL_CHECK_MAX_RETRY_MS` — maximum retry delay for temporary URL check failures; default `3600000`
-- `URL_CHECK_HARD_FAILURE_ATTEMPTS` — number of hard failures required before URL scoring removes resolve points; default `2`
+- `URL_CHECK_HARD_FAILURE_ATTEMPTS` — hard failures required before URL evidence is recorded as failed; default `2`
 - `URL_CHECK_MAX_URLS_PER_DID` — maximum profile/organization URLs cached and checked per DID; default `5`
 
 ## Persistence requirements
 
 This fork uses two SQLite databases in the app service and one in the Tap service:
 
-- `ACTIVITY_DB_PATH` — dashboard data and scoring history
+- `ACTIVITY_DB_PATH` — actor snapshots, Jev assessments, durable jobs, admin sessions, and encrypted short-lived OAuth login state
 - `LABELS_DB_PATH` — AT Protocol label records
 - Tap service database — Tap cursor / replay state
 

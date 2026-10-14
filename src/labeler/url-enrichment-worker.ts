@@ -14,7 +14,6 @@ import {
   URL_ENRICHMENT_ENABLED,
 } from '../lib/config'
 import {
-  enqueueRecomputeJob,
   getAllOrganizationSnapshots,
   getDueUrlCheck,
   getOrganizationSnapshot,
@@ -27,7 +26,9 @@ import {
   type UrlCheck,
 } from '../lib/db'
 import { isPublicNetworkAddress, normalizePublicWebsiteUrl } from '../lib/website-utils'
-import type { UrlResolutionMap, UrlResolutionState } from '../lib/scoring-input'
+import { withDidLocks } from '../lib/did-lock'
+import { queueOrganizationAssessment } from './jev-assessment-worker'
+import type { UrlResolutionMap, UrlResolutionState } from '../lib/actor-evidence'
 import logger from './logger'
 
 const URL_RECOMPUTE_DELAY_MS = 0
@@ -52,6 +53,10 @@ function retryDelayForAttempt(attempts: number): number {
 }
 
 function resolutionStateForCheck(check: UrlCheck): UrlResolutionState {
+  // Expiry-triggered pending rows retain this marker until the recheck completes.
+  if (check.status === 'pending' && check.resolvable !== null) {
+    return check.resolvable ? 'ok' : 'failed'
+  }
   if (check.status === 'ok') return 'ok'
   if (check.status === 'failed') return 'failed'
   return 'unknown'
@@ -100,7 +105,7 @@ export function enqueueUrlChecksForDid(did: string): number {
   return urls.length
 }
 
-/** Reads cached URL resolution states for scoring; missing rows remain optimistic unknowns. */
+/** Reads cached URL resolution states for Jev evidence; missing rows remain unknown. */
 export function getUrlResolutionMapForDid(did: string): UrlResolutionMap {
   if (!URL_ENRICHMENT_ENABLED) return {}
 
@@ -303,7 +308,19 @@ function saveUrlCheckOutcome(check: UrlCheck, outcome: UrlCheckOutcome): UrlReso
 async function processDueUrlCheck(check: UrlCheck): Promise<void> {
   const beforeState = resolutionStateForCheck(check)
   const outcome = await resolveUrl(check.normalizedUrl)
-  const afterState = saveUrlCheckOutcome(check, outcome)
+  const affectedDids = getDidsReferencingUrl(check.normalizedUrl)
+  const afterState = await withDidLocks(affectedDids, async () => {
+    const state = saveUrlCheckOutcome(check, outcome)
+    if (beforeState !== state) {
+      const dids = getDidsReferencingUrl(check.normalizedUrl)
+      for (const did of dids) {
+        queueOrganizationAssessment(did, 'url-enrichment', {
+          delayMs: URL_RECOMPUTE_DELAY_MS,
+        })
+      }
+    }
+    return state
+  })
 
   logger.info(
     {
@@ -319,16 +336,8 @@ async function processDueUrlCheck(check: UrlCheck): Promise<void> {
 
   if (beforeState === afterState) return
 
-  const dids = getDidsReferencingUrl(check.normalizedUrl)
-  for (const did of dids) {
-    enqueueRecomputeJob('recompute-org', did, {
-      delayMs: URL_RECOMPUTE_DELAY_MS,
-      payload: { reason: 'url-enrichment', url: check.normalizedUrl },
-    })
-  }
-
-  if (dids.length > 0) {
-    logger.info({ url: check.normalizedUrl, dids, beforeState, afterState }, 'Queued recompute after URL enrichment state changed')
+  if (affectedDids.length > 0) {
+    logger.info({ url: check.normalizedUrl, dids: affectedDids, beforeState, afterState }, 'Queued Jev assessment after URL evidence changed')
   }
 }
 

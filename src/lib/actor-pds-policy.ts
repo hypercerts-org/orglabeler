@@ -1,4 +1,4 @@
-import { TEST_PDS_HOSTS, TRUSTED_PDS_BONUS, TRUSTED_PDS_HOSTS } from './config'
+import { TEST_PDS_HOSTS } from './config'
 import {
   enqueueRecomputeJob,
   getActorPdsCache,
@@ -18,47 +18,31 @@ export function testPdsDetectionEnabled(): boolean {
   return TEST_PDS_HOSTS.length > 0
 }
 
-/** Returns true when trusted-PDS scoring can affect the final score. */
-export function trustedPdsBonusEnabled(): boolean {
-  return TRUSTED_PDS_HOSTS.length > 0 && TRUSTED_PDS_BONUS > 0
-}
-
-/** Returns true when actor PDS lookup is needed for any scoring policy. */
+/** PDS resolution is used only to apply the configured test-PDS override. */
 export function actorPdsResolutionEnabled(): boolean {
-  return testPdsDetectionEnabled() || trustedPdsBonusEnabled()
+  return testPdsDetectionEnabled()
 }
 
-/** Enqueues actor PDS resolution when any actor-PDS scoring policy is configured. */
-export function enqueueActorPdsResolution(did: string, reason: string, delayMs = 0): void {
+/** Enqueues actor PDS resolution only when test-PDS detection is configured. */
+export function enqueueActorPdsResolution(
+  did: string,
+  reason: string,
+  delayMs = 0,
+  options: { force?: boolean; runIds?: string[] } = {},
+): void {
   if (!actorPdsResolutionEnabled()) return
 
   recordActorPdsPending(did, ACTOR_PDS_PENDING_TTL_MS)
   enqueueRecomputeJob('resolve-actor-pds', did, {
     delayMs,
-    payload: { reason },
+    payload: { reason, ...(options.force ? { force: true } : {}), ...(options.runIds?.length ? { runIds: options.runIds } : {}) },
   })
-}
-
-/**
- * Returns the best cached actor PDS host for scoring. Stale hosts are still used
- * for the current score, but a refresh is queued so later recomputes can correct
- * trusted-PDS bonuses or test-PDS labels.
- */
-export function cachedActorPdsHostForScoring(did: string): string | null {
-  if (!actorPdsResolutionEnabled()) return null
-
-  const cache = getActorPdsCache(did)
-  if (!cache || isActorPdsCacheStale(cache)) {
-    enqueueActorPdsResolution(did, cache ? 'recompute-stale-pds-cache' : 'recompute-pds-cache-miss')
-  }
-
-  return cache?.pdsHost ?? null
 }
 
 /**
  * Decides whether URL enrichment should run for an actor. When TEST_PDS_HOSTS is
  * configured, URL checks are deferred until the actor PDS cache is fresh because
- * test-PDS actors are always likely-test and URL scoring is irrelevant for them.
+ * test-PDS actors receive likely-test and URL checks are irrelevant for them.
  */
 export function shouldRunUrlEnrichmentForDid(did: string): boolean {
   if (!testPdsDetectionEnabled()) return true

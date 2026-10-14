@@ -1,16 +1,13 @@
 import 'dotenv/config'
 import fs from 'node:fs'
 import { HOST, LABELER_PORT, METRICS_PORT, TAP_URL, APP_DB_PATHS, TAP_ADMIN_PASSWORD } from '../lib/config'
-import { getPendingActivities, deleteActivity } from '../lib/db'
-import { labelerServer, applyQualityLabel } from './server'
+import { labelerServer } from './server'
 import {
   startTapConsumer,
-  backfillHfClassification,
   syncLabelsWithDb,
   reconcileStoredOrganizationSnapshots,
   startRecomputeWorker,
 } from './tap-consumer'
-import { setReclassifyCallback } from '../lib/hf-classifier'
 import { startMetricsServer } from './metrics'
 import { startUrlEnrichmentWorker } from './url-enrichment-worker'
 import logger from './logger'
@@ -103,24 +100,9 @@ async function main() {
     })
   })
 
-  // Wire HF reclassification to update DID labels.
-  setReclassifyCallback(async (did, newTier) => {
-    await applyQualityLabel(did, newTier)
-  })
-
   // 2. Start metrics server
   startMetricsServer(METRICS_PORT)
   logger.info({ port: METRICS_PORT }, 'Metrics server started')
-
-  // Fix 7: clean up stale pending records BEFORE starting tap consumer
-  // so a backfill event can't re-score a record that we're about to delete
-  const pendingRecords = getPendingActivities()
-  if (pendingRecords.length > 0) {
-    logger.warn({ count: pendingRecords.length }, 'Deleting stale pending records — they will be re-scored on next tap event')
-    for (const record of pendingRecords) {
-      deleteActivity(record.did, record.rkey)
-    }
-  }
 
   // 8. Reconcile local organization snapshots before steady-state ingestion begins.
   await reconcileStoredOrganizationSnapshots()
@@ -138,10 +120,8 @@ async function main() {
   // 12. Start tap consumer (replaces Jetstream subscription)
   consumer = startTapConsumer()
   logger.info('Tap consumer started — receiving backfill + live events')
-  backfillHfClassification()
-
-  // One-time sync: fix any actors where DB tier disagrees with ATProto label
-  // (caused by pre-fix HF reclassifications that only updated the DB)
+  // One-time sync only reapplies labels from current Jev results. Stale legacy
+  // labels remain published but are never treated as current assessment output.
   syncLabelsWithDb().catch(err => {
     logger.warn({ err }, 'Label sync failed — will retry on next restart')
   })
