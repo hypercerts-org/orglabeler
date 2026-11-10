@@ -186,3 +186,11 @@ This is important because `subscribeLabels` uses WebSockets, which need a real r
 - **Styling:** Tailwind CSS v4, OKLCH colors
 - **Labeler:** @skyware/labeler, @atproto/tap
 - **Database:** SQLite (better-sqlite3)
+
+## License
+
+Licensed under either [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.
+
+The licenses cover the code. They don't cover the logos in this repository, which belong to their owners.
+
+Lexicon schemas copied from other publishers (`app.bsky`, `com.atproto`, `pub.leaflet`, `app.gainforest`, `app.bumicerts` and `org.impactindexer`) keep their publishers' licenses.
