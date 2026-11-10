@@ -193,8 +193,11 @@ Licensed under either [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at you
 
 The licenses cover the code. They don't cover the logos in this repository, which belong to their owners.
 
+This project began as a fork of Hyperlabel, a labeler for hypercert activity written at GainForest.
+
 Lexicon schemas copied from other publishers into `lexicons/`, and the TypeScript generated from them in `src/lexicons/`, aren't covered by these licenses. They keep their publishers' terms:
 
-- `app.bsky` and `com.atproto`: from Bluesky's [atproto](https://github.com/bluesky-social/atproto), licensed MIT OR Apache-2.0.
+- `app.bsky`: from Bluesky's [bsky](https://github.com/bluesky-social/bsky) repository, licensed MIT OR Apache-2.0.
+- `com.atproto`: from Bluesky's [atproto](https://github.com/bluesky-social/atproto) repository, licensed MIT OR Apache-2.0.
 - `pub.leaflet`: from [Leaflet](https://github.com/hyperlink-academy/leaflet), licensed MIT.
 - `app.gainforest`, `app.bumicerts` and `org.impactindexer`: from [GainForest](https://github.com/GainForest).
