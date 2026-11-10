@@ -201,3 +201,5 @@ Lexicon schemas copied from other publishers into `lexicons/`, and the TypeScrip
 - `com.atproto`: from Bluesky's [atproto](https://github.com/bluesky-social/atproto) repository, licensed MIT OR Apache-2.0.
 - `pub.leaflet`: from [Leaflet](https://github.com/hyperlink-academy/leaflet), licensed MIT.
 - `app.gainforest`, `app.bumicerts` and `org.impactindexer`: from [GainForest](https://github.com/GainForest).
+
+The sun and moon icons in `src/components/ThemeToggle.tsx` aren't covered by these licenses either. They come from [Feather](https://github.com/feathericons/feather), licensed MIT.
