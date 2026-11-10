@@ -197,9 +197,9 @@ This project began as a fork of Hyperlabel, a labeler for hypercert activity wri
 
 Lexicon schemas copied from other publishers into `lexicons/`, and the TypeScript generated from them in `src/lexicons/`, aren't covered by these licenses. They keep their publishers' terms:
 
-- `app.bsky`: from Bluesky's [bsky](https://github.com/bluesky-social/bsky) repository, licensed MIT OR Apache-2.0.
-- `com.atproto`: from Bluesky's [atproto](https://github.com/bluesky-social/atproto) repository, licensed MIT OR Apache-2.0.
-- `pub.leaflet`: from [Leaflet](https://github.com/hyperlink-academy/leaflet), licensed MIT.
+- `app.bsky`: from Bluesky's [bsky](https://github.com/bluesky-social/bsky) repository, licensed MIT OR Apache-2.0, Copyright (c) 2022-2026 Bluesky Social PBC, and Contributors.
+- `com.atproto`: from Bluesky's [atproto](https://github.com/bluesky-social/atproto) repository, licensed MIT OR Apache-2.0, Copyright (c) 2022-2026 Bluesky Social PBC, and Contributors.
+- `pub.leaflet`: from [Leaflet](https://github.com/hyperlink-academy/leaflet), licensed MIT, Copyright (c) 2025 Learning Futures Inc.
 - `app.gainforest`, `app.bumicerts` and `org.impactindexer`: from [GainForest](https://github.com/GainForest).
 
-The sun and moon icons in `src/components/ThemeToggle.tsx` aren't covered by these licenses either. They come from [Feather](https://github.com/feathericons/feather), licensed MIT.
+The sun and moon icons in `src/components/ThemeToggle.tsx` aren't covered by these licenses either. They come from [Feather](https://github.com/feathericons/feather), licensed MIT, Copyright (c) 2013-2023 Cole Bemis.

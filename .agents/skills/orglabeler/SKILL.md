@@ -1,6 +1,7 @@
 ---
 name: orglabeler
 description: Use this skill when integrating, querying, subscribing to, caching, troubleshooting, or interpreting Certified Organization Labeler / OrgLabeler labels for app.certified.actor.profile and app.certified.actor.organization actors. Trigger when a downstream product needs to consume OrgLabeler via com.atproto.label.queryLabels, com.atproto.label.subscribeLabels, dashboard REST endpoints, or needs to understand OrgLabeler-specific likely-test/standard/high-quality labels. Use this for product integrations that want to filter certified actor organizations, hide test data, show current OrgLabeler tiers, or debug why an actor received a tier.
+license: MIT OR Apache-2.0
 ---
 
 # OrgLabeler Consumer
