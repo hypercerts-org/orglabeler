@@ -1,5 +1,11 @@
 # certified-organization-labeler
 
+## 0.1.2
+
+### Patch Changes
+
+- [#10](https://github.com/hypercerts-org/orglabeler/pull/10) [`fdf885d`](https://github.com/hypercerts-org/orglabeler/commit/fdf885d8d9f916ccf8ea859adb1216aba655f250) Thanks [@holkexyz](https://github.com/holkexyz)! - - License the project and its agent skill under MIT OR Apache-2.0.
+
 ## 0.1.1
 
 ### Patch Changes
