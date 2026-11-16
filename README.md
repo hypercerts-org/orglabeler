@@ -191,6 +191,8 @@ This is important because `subscribeLabels` uses WebSockets, which need a real r
 
 Licensed under either [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.
 
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in the work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or conditions.
+
 The licenses cover the code. They don't cover the logos in this repository, which belong to their owners.
 
 This project began as a fork of Hyperlabel, a labeler for hypercert activity written at GainForest.
