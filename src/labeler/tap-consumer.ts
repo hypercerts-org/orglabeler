@@ -226,6 +226,9 @@ export async function recomputeLabeledOrganizationRow(did: string): Promise<Orga
 
   try {
     const result = applyPdsTestOverride(await scoreActivity(scoringInput), actorPdsHost)
+    // The account may have been deleted while scoring was awaited; don't write
+    // a row for it after deleteAccountState has cleared its state.
+    if (hasPendingOrganizationDelete(did) || !getOrganizationSnapshot(did)) return null
 
     try {
       logActivity({
