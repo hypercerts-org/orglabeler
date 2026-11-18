@@ -605,6 +605,26 @@ export function hasMatchingPendingOrganizationDelete(did: string, rkey: string, 
   return Boolean(row)
 }
 
+/**
+ * Removes everything stored about a deleted account: profile and organization
+ * snapshots, scores, the PDS cache, and queued recompute jobs. A queued label
+ * negation in pending_organization_deletes is kept, because it still has to
+ * run, and removes itself when it does. Returns the number of rows removed.
+ */
+export function deleteAccountState(did: string): number {
+  const db = getDb()
+
+  return db.transaction(() => {
+    let removed = 0
+    removed += db.prepare('DELETE FROM profile_snapshots WHERE did = ?').run(did).changes
+    removed += db.prepare('DELETE FROM organization_snapshots WHERE did = ?').run(did).changes
+    removed += db.prepare('DELETE FROM activities WHERE did = ?').run(did).changes
+    removed += db.prepare('DELETE FROM actor_pds_cache WHERE did = ?').run(did).changes
+    removed += db.prepare('DELETE FROM recompute_jobs WHERE key = ?').run(did).changes
+    return removed
+  })()
+}
+
 export function deletePendingOrganizationDelete(did: string): void {
   const db = getDb()
   db.prepare('DELETE FROM pending_organization_deletes WHERE did = ?').run(did)

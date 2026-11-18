@@ -1,5 +1,5 @@
 import { Tap, SimpleIndexer } from '@atproto/tap'
-import type { TapChannel } from '@atproto/tap'
+import type { IdentityEvent, TapChannel } from '@atproto/tap'
 import { TAP_URL, TAP_ADMIN_PASSWORD, ACTIVITY_COLLECTION, TRUSTED_PDS_BONUS, TRUSTED_PDS_HOSTS } from '../lib/config'
 import { cachedActorPdsHostForScoring, ACTOR_PDS_CACHE_TTL_MS } from '../lib/actor-pds-policy'
 import { applyPdsTestOverride } from '../lib/pds-test-override'
@@ -21,6 +21,7 @@ import {
   getProfileSnapshot,
   getOrganizationSnapshot,
   getAllOrganizationSnapshots,
+  deleteAccountState,
   deleteProfileSnapshot,
   deleteOrganizationRecordState,
   completePendingOrganizationDelete,
@@ -407,6 +408,43 @@ async function handleProfileDelete(did: string): Promise<void> {
     profileIngestMode: 'missing',
   })
 }
+
+/**
+ * Purges a deleted account. Its stored state goes at once; its quality labels
+ * are negated by the recompute worker through a pending delete, which retries
+ * until the negation is written and then removes itself.
+ */
+async function handleAccountDeleted(did: string): Promise<void> {
+  const organization = getOrganizationSnapshot(did)
+  const activeLabels = [...await fetchCurrentLabels(did)].filter(isRuntimeLabelTier)
+  const removed = deleteAccountState(did)
+
+  if (organization || activeLabels.length > 0) {
+    upsertPendingOrganizationDelete(
+      did,
+      organization?.rkey ?? 'self',
+      organization?.recordUri ?? `at://${did}/${ORGANIZATION_COLLECTION}/self`,
+    )
+  }
+
+  if (removed > 0 || activeLabels.length > 0) {
+    logger.info({ did, removed, negating: activeLabels }, 'Purged deleted account')
+  }
+}
+
+/**
+ * Only a deletion purges. A deactivated account can come back, and a takedown
+ * or suspension may be lifted, so their state and labels stay.
+ */
+export async function handleIdentityEvent(evt: { did: string; status: IdentityEvent['status'] }): Promise<void> {
+  if (evt.status === 'deleted') {
+    await handleAccountDeleted(evt.did)
+  }
+}
+
+indexer.identity(async (evt) => {
+  await handleIdentityEvent(evt)
+})
 
 indexer.record(async (evt) => {
   const startedAt = performance.now()
