@@ -662,6 +662,10 @@ export function enqueueRecomputeJob(
   `).run({ kind, key, runAfter, payload })
 }
 
+// There is one labeler process. A fresh object identifies each PDS attempt,
+// even if SQLite reuses the deleted row's ID and every stored field matches.
+const actorPdsClaims = new Map<string, RecomputeJob>()
+
 /**
  * Atomically claims the oldest due recompute job for a single worker process.
  * Returns null when no debounced job is ready to run yet.
@@ -683,7 +687,29 @@ export function claimDueRecomputeJob(now = new Date().toISOString()): RecomputeJ
     RETURNING id, kind, key, status, attempts, run_after, payload, last_error, created_at, updated_at
   `).get({ now }) as RecomputeJobRow | undefined
 
-  return row ? recomputeJobRowToEntry(row) : null
+  if (!row) return null
+  const job = recomputeJobRowToEntry(row)
+  if (job.kind === 'resolve-actor-pds') actorPdsClaims.set(job.key, job)
+  return job
+}
+
+/** Commits the synchronous SQLite effects of a PDS lookup only for its current running claim. */
+export function commitActorPdsLookup(job: RecomputeJob, apply: () => undefined): boolean {
+  if (actorPdsClaims.get(job.key) !== job) return false
+
+  const db = getDb()
+  const committed = db.transaction(() => {
+    const running = db.prepare(`
+      SELECT 1 FROM recompute_jobs
+      WHERE id = ? AND kind = 'resolve-actor-pds' AND key = ? AND status = 'running'
+    `).get(job.id, job.key)
+    if (!running) return false
+    apply()
+    return true
+  }).immediate()
+
+  actorPdsClaims.delete(job.key)
+  return committed
 }
 
 /**

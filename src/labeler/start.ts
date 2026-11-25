@@ -131,6 +131,13 @@ async function main() {
   // 10. Wait for tap to be ready
   await waitForTap(TAP_URL)
 
+  // Finish local label repair before Tap or the workers can purge an actor
+  // whose tier was copied by the sync.
+  await syncLabelsWithDb().catch(err => {
+    logger.warn({ err }, 'Label sync failed — will retry on next restart')
+  })
+  if (shuttingDown) return
+
   // 11. Start async workers before Tap so persisted jobs can drain.
   recomputeWorker = startRecomputeWorker()
   urlEnrichmentWorker = startUrlEnrichmentWorker()
@@ -139,12 +146,6 @@ async function main() {
   consumer = startTapConsumer()
   logger.info('Tap consumer started — receiving backfill + live events')
   backfillHfClassification()
-
-  // One-time sync: fix any actors where DB tier disagrees with ATProto label
-  // (caused by pre-fix HF reclassifications that only updated the DB)
-  syncLabelsWithDb().catch(err => {
-    logger.warn({ err }, 'Label sync failed — will retry on next restart')
-  })
 }
 
 main().catch((err) => {

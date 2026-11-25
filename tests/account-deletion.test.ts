@@ -3,6 +3,7 @@ import { after, beforeEach, test } from 'node:test'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { setImmediate } from 'node:timers/promises'
 import type { OrganizationSnapshot } from '../src/lib/types'
 
 const testDir = mkdtempSync(join(tmpdir(), 'orglabeler-account-deletion-'))
@@ -14,9 +15,11 @@ process.env.TAP_URL = 'http://127.0.0.1:65535'
 process.env.HF_TOKEN = ''
 
 const {
+  claimDueRecomputeJob,
   closeDb,
   enqueueRecomputeJob,
   getDb,
+  getActorPdsCache,
   getOrganizationSnapshot,
   getProfileSnapshot,
   hasPendingOrganizationDelete,
@@ -26,7 +29,7 @@ const {
   upsertProfileSnapshot,
 } = await import('../src/lib/db')
 const { fetchCurrentLabels, labelerServer } = await import('../src/labeler/server')
-const { handleIdentityEvent, reconcileStoredOrganizationSnapshots } = await import('../src/labeler/tap-consumer')
+const { handleIdentityEvent, reconcileStoredOrganizationSnapshots, startRecomputeWorker } = await import('../src/labeler/tap-consumer')
 
 beforeEach(async () => {
   getDb().exec(`
@@ -112,6 +115,56 @@ test('a deleted account loses its stored state and, once the worker runs, its la
   assert.equal(hasPendingOrganizationDelete(did), false)
   assert.equal((await fetchCurrentLabels(kept)).size, 1)
 })
+
+for (const [result, invalidation] of [
+  ['success', 'purge'],
+  ['failure', 'purge'],
+  ['success', 'replacement'],
+  ['failure', 'replacement'],
+  ['failure', 'requeue'],
+] as const) {
+  test(`ignores PDS lookup ${result} after ${invalidation}`, { timeout: 3000 }, async (t) => {
+    const did = 'did:web:lookup.example'
+    const started = Promise.withResolvers<void>()
+    const lookup = Promise.withResolvers<Response>()
+    t.mock.method(globalThis, 'fetch', (url: string) => {
+      assert.equal(url, 'https://lookup.example/.well-known/did.json')
+      started.resolve()
+      return lookup.promise
+    })
+
+    const readJobs = () => getDb().prepare('SELECT * FROM recompute_jobs ORDER BY id').all()
+    enqueueRecomputeJob('resolve-actor-pds', did, { delayMs: 0 })
+    const worker = startRecomputeWorker()
+    try {
+      await started.promise
+      const [original] = readJobs() as Array<{ id: number }>
+      if (invalidation !== 'requeue') {
+        await handleIdentityEvent({ did, status: 'deleted' })
+      }
+      if (invalidation === 'replacement') {
+        enqueueRecomputeJob('resolve-actor-pds', did, { delayMs: 0 })
+        // Claim an identical replacement while the original lookup still waits.
+        assert.equal(claimDueRecomputeJob()?.id, original.id, 'SQLite reused the row ID')
+      } else if (invalidation === 'requeue') {
+        enqueueRecomputeJob('resolve-actor-pds', did, { delayMs: 60_000 })
+      }
+      const expectedJobs = readJobs()
+
+      lookup.resolve(result === 'success'
+        ? Response.json({ service: [{ id: '#atproto_pds', serviceEndpoint: 'https://pds.example' }] })
+        : new Response(null, { status: 503 }))
+      // The synthetic response and SQLite writes settle before the next macrotask.
+      await setImmediate()
+
+      assert.deepEqual(readJobs(), expectedJobs, 'must not enqueue, complete or retry any job')
+      assert.equal(getActorPdsCache(did), null)
+    } finally {
+      lookup.resolve(new Response(null, { status: 503 }))
+      worker.destroy()
+    }
+  })
+}
 
 test('deactivation, takedown and suspension keep the account and its labels', async () => {
   for (const status of ['deactivated', 'takendown', 'suspended', 'active'] as const) {

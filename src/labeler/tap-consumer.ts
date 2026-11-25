@@ -11,6 +11,7 @@ import {
   getUnclassifiedActivities,
   getAllActivitiesForSync,
   claimDueRecomputeJob,
+  commitActorPdsLookup,
   completeRecomputeJob,
   enqueueRecomputeJob,
   failRecomputeJob,
@@ -141,14 +142,13 @@ function pendingDeleteRetryDelayForAttempt(attempts: number): number {
   return Math.min(PENDING_DELETE_MAX_RETRY_MS, PENDING_DELETE_RETRY_BASE_MS * (2 ** exponent))
 }
 
-async function resolveAndCacheActorPds(did: string): Promise<{ pdsUrl: string; pdsHost: string }> {
+async function resolveActorPds(did: string): Promise<{ pdsUrl: string; pdsHost: string }> {
   const { pds } = await resolvePdsForDid(did)
   const pdsHost = normalizePdsHostFromUrl(pds)
   if (!pdsHost) {
     throw new Error(`Resolved PDS endpoint for ${did} is not a valid URL: ${pds}`)
   }
 
-  recordActorPdsOk(did, pds, pdsHost, ACTOR_PDS_CACHE_TTL_MS)
   return { pdsUrl: pds, pdsHost }
 }
 
@@ -666,13 +666,18 @@ export function startRecomputeWorker(): { destroy: () => void } {
         const currentJob = job
         try {
           if (currentJob.kind === 'resolve-actor-pds') {
-            const resolved = await resolveAndCacheActorPds(currentJob.key)
-            enqueueOrganizationRecompute(currentJob.key, 'actor-pds-resolved')
-            completeRecomputeJob(currentJob.id)
-            logger.info(
-              { did: currentJob.key, pdsUrl: resolved.pdsUrl, pdsHost: resolved.pdsHost },
-              'Resolved actor PDS and queued organization recompute',
-            )
+            const { pdsUrl, pdsHost } = await resolveActorPds(currentJob.key)
+            const committed = commitActorPdsLookup(currentJob, () => {
+              recordActorPdsOk(currentJob.key, pdsUrl, pdsHost, ACTOR_PDS_CACHE_TTL_MS)
+              enqueueOrganizationRecompute(currentJob.key, 'actor-pds-resolved')
+              completeRecomputeJob(currentJob.id)
+            })
+            if (committed) {
+              logger.info(
+                { did: currentJob.key, pdsUrl, pdsHost },
+                'Resolved actor PDS and queued organization recompute',
+              )
+            }
             job = claimDueRecomputeJob()
             continue
           }
@@ -704,15 +709,30 @@ export function startRecomputeWorker(): { destroy: () => void } {
           const message = err instanceof Error ? err.message : String(err)
           const retryDelayMs = retryDelayForAttempt(currentJob.attempts)
 
+          const exhausted = currentJob.attempts >= RECOMPUTE_MAX_ATTEMPTS
+          const recordFailure = () => failRecomputeJob(
+            currentJob.id,
+            message,
+            exhausted ? RECOMPUTE_MAX_RETRY_DELAY_MS : retryDelayMs,
+            exhausted ? 'failed' : 'pending',
+          )
+
           if (currentJob.kind === 'resolve-actor-pds') {
-            recordActorPdsFailure(currentJob.key, message, retryDelayMs)
+            const committed = commitActorPdsLookup(currentJob, () => {
+              recordActorPdsFailure(currentJob.key, message, retryDelayMs)
+              recordFailure()
+            })
+            if (!committed) {
+              job = claimDueRecomputeJob()
+              continue
+            }
+          } else {
+            recordFailure()
           }
 
-          if (currentJob.attempts >= RECOMPUTE_MAX_ATTEMPTS) {
+          if (exhausted) {
             logger.error({ err, job: currentJob }, 'Recompute job exceeded max attempts; leaving failed for inspection')
-            failRecomputeJob(currentJob.id, message, RECOMPUTE_MAX_RETRY_DELAY_MS, 'failed')
           } else {
-            failRecomputeJob(currentJob.id, message, retryDelayMs)
             logger.error({ err, job: currentJob, retryDelayMs }, 'Recompute job failed; retry scheduled')
           }
         }
