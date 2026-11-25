@@ -1,5 +1,5 @@
 import { Tap, SimpleIndexer } from '@atproto/tap'
-import type { TapChannel } from '@atproto/tap'
+import type { IdentityEvent, TapChannel } from '@atproto/tap'
 import { TAP_URL, TAP_ADMIN_PASSWORD, ACTIVITY_COLLECTION, TRUSTED_PDS_BONUS, TRUSTED_PDS_HOSTS } from '../lib/config'
 import { cachedActorPdsHostForScoring, ACTOR_PDS_CACHE_TTL_MS } from '../lib/actor-pds-policy'
 import { applyPdsTestOverride } from '../lib/pds-test-override'
@@ -11,6 +11,7 @@ import {
   getUnclassifiedActivities,
   getAllActivitiesForSync,
   claimDueRecomputeJob,
+  commitActorPdsLookup,
   completeRecomputeJob,
   enqueueRecomputeJob,
   failRecomputeJob,
@@ -21,6 +22,7 @@ import {
   getProfileSnapshot,
   getOrganizationSnapshot,
   getAllOrganizationSnapshots,
+  deleteAccountState,
   deleteProfileSnapshot,
   deleteOrganizationRecordState,
   completePendingOrganizationDelete,
@@ -140,14 +142,13 @@ function pendingDeleteRetryDelayForAttempt(attempts: number): number {
   return Math.min(PENDING_DELETE_MAX_RETRY_MS, PENDING_DELETE_RETRY_BASE_MS * (2 ** exponent))
 }
 
-async function resolveAndCacheActorPds(did: string): Promise<{ pdsUrl: string; pdsHost: string }> {
+async function resolveActorPds(did: string): Promise<{ pdsUrl: string; pdsHost: string }> {
   const { pds } = await resolvePdsForDid(did)
   const pdsHost = normalizePdsHostFromUrl(pds)
   if (!pdsHost) {
     throw new Error(`Resolved PDS endpoint for ${did} is not a valid URL: ${pds}`)
   }
 
-  recordActorPdsOk(did, pds, pdsHost, ACTOR_PDS_CACHE_TTL_MS)
   return { pdsUrl: pds, pdsHost }
 }
 
@@ -225,6 +226,9 @@ export async function recomputeLabeledOrganizationRow(did: string): Promise<Orga
 
   try {
     const result = applyPdsTestOverride(await scoreActivity(scoringInput), actorPdsHost)
+    // The account may have been deleted while scoring was awaited; don't write
+    // a row for it after deleteAccountState has cleared its state.
+    if (hasPendingOrganizationDelete(did) || !getOrganizationSnapshot(did)) return null
 
     try {
       logActivity({
@@ -407,6 +411,43 @@ async function handleProfileDelete(did: string): Promise<void> {
     profileIngestMode: 'missing',
   })
 }
+
+/**
+ * Purges a deleted account. Its stored state goes at once; its quality labels
+ * are negated by the recompute worker through a pending delete, which retries
+ * until the negation is written and then removes itself.
+ */
+async function handleAccountDeleted(did: string): Promise<void> {
+  const organization = getOrganizationSnapshot(did)
+  const activeLabels = [...await fetchCurrentLabels(did)].filter(isRuntimeLabelTier)
+  const removed = deleteAccountState(did)
+
+  if (organization || activeLabels.length > 0) {
+    upsertPendingOrganizationDelete(
+      did,
+      organization?.rkey ?? 'self',
+      organization?.recordUri ?? `at://${did}/${ORGANIZATION_COLLECTION}/self`,
+    )
+  }
+
+  if (removed > 0 || activeLabels.length > 0) {
+    logger.info({ did, removed, negating: activeLabels }, 'Purged deleted account')
+  }
+}
+
+/**
+ * Only a deletion purges. A deactivated account can come back, and a takedown
+ * or suspension may be lifted, so their state and labels stay.
+ */
+export async function handleIdentityEvent(evt: { did: string; status: IdentityEvent['status'] }): Promise<void> {
+  if (evt.status === 'deleted') {
+    await handleAccountDeleted(evt.did)
+  }
+}
+
+indexer.identity(async (evt) => {
+  await handleIdentityEvent(evt)
+})
 
 indexer.record(async (evt) => {
   const startedAt = performance.now()
@@ -625,13 +666,18 @@ export function startRecomputeWorker(): { destroy: () => void } {
         const currentJob = job
         try {
           if (currentJob.kind === 'resolve-actor-pds') {
-            const resolved = await resolveAndCacheActorPds(currentJob.key)
-            enqueueOrganizationRecompute(currentJob.key, 'actor-pds-resolved')
-            completeRecomputeJob(currentJob.id)
-            logger.info(
-              { did: currentJob.key, pdsUrl: resolved.pdsUrl, pdsHost: resolved.pdsHost },
-              'Resolved actor PDS and queued organization recompute',
-            )
+            const { pdsUrl, pdsHost } = await resolveActorPds(currentJob.key)
+            const committed = commitActorPdsLookup(currentJob, () => {
+              recordActorPdsOk(currentJob.key, pdsUrl, pdsHost, ACTOR_PDS_CACHE_TTL_MS)
+              enqueueOrganizationRecompute(currentJob.key, 'actor-pds-resolved')
+              completeRecomputeJob(currentJob.id)
+            })
+            if (committed) {
+              logger.info(
+                { did: currentJob.key, pdsUrl, pdsHost },
+                'Resolved actor PDS and queued organization recompute',
+              )
+            }
             job = claimDueRecomputeJob()
             continue
           }
@@ -663,15 +709,30 @@ export function startRecomputeWorker(): { destroy: () => void } {
           const message = err instanceof Error ? err.message : String(err)
           const retryDelayMs = retryDelayForAttempt(currentJob.attempts)
 
+          const exhausted = currentJob.attempts >= RECOMPUTE_MAX_ATTEMPTS
+          const recordFailure = () => failRecomputeJob(
+            currentJob.id,
+            message,
+            exhausted ? RECOMPUTE_MAX_RETRY_DELAY_MS : retryDelayMs,
+            exhausted ? 'failed' : 'pending',
+          )
+
           if (currentJob.kind === 'resolve-actor-pds') {
-            recordActorPdsFailure(currentJob.key, message, retryDelayMs)
+            const committed = commitActorPdsLookup(currentJob, () => {
+              recordActorPdsFailure(currentJob.key, message, retryDelayMs)
+              recordFailure()
+            })
+            if (!committed) {
+              job = claimDueRecomputeJob()
+              continue
+            }
+          } else {
+            recordFailure()
           }
 
-          if (currentJob.attempts >= RECOMPUTE_MAX_ATTEMPTS) {
+          if (exhausted) {
             logger.error({ err, job: currentJob }, 'Recompute job exceeded max attempts; leaving failed for inspection')
-            failRecomputeJob(currentJob.id, message, RECOMPUTE_MAX_RETRY_DELAY_MS, 'failed')
           } else {
-            failRecomputeJob(currentJob.id, message, retryDelayMs)
             logger.error({ err, job: currentJob, retryDelayMs }, 'Recompute job failed; retry scheduled')
           }
         }

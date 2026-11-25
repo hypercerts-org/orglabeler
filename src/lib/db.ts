@@ -605,6 +605,26 @@ export function hasMatchingPendingOrganizationDelete(did: string, rkey: string, 
   return Boolean(row)
 }
 
+/**
+ * Removes everything stored about a deleted account: profile and organization
+ * snapshots, scores, the PDS cache, and queued recompute jobs. A queued label
+ * negation in pending_organization_deletes is kept, because it still has to
+ * run, and removes itself when it does. Returns the number of rows removed.
+ */
+export function deleteAccountState(did: string): number {
+  const db = getDb()
+
+  return db.transaction(() => {
+    let removed = 0
+    removed += db.prepare('DELETE FROM profile_snapshots WHERE did = ?').run(did).changes
+    removed += db.prepare('DELETE FROM organization_snapshots WHERE did = ?').run(did).changes
+    removed += db.prepare('DELETE FROM activities WHERE did = ?').run(did).changes
+    removed += db.prepare('DELETE FROM actor_pds_cache WHERE did = ?').run(did).changes
+    removed += db.prepare('DELETE FROM recompute_jobs WHERE key = ?').run(did).changes
+    return removed
+  })()
+}
+
 export function deletePendingOrganizationDelete(did: string): void {
   const db = getDb()
   db.prepare('DELETE FROM pending_organization_deletes WHERE did = ?').run(did)
@@ -642,6 +662,10 @@ export function enqueueRecomputeJob(
   `).run({ kind, key, runAfter, payload })
 }
 
+// There is one labeler process. A fresh object identifies each PDS attempt,
+// even if SQLite reuses the deleted row's ID and every stored field matches.
+const actorPdsClaims = new Map<string, RecomputeJob>()
+
 /**
  * Atomically claims the oldest due recompute job for a single worker process.
  * Returns null when no debounced job is ready to run yet.
@@ -663,7 +687,29 @@ export function claimDueRecomputeJob(now = new Date().toISOString()): RecomputeJ
     RETURNING id, kind, key, status, attempts, run_after, payload, last_error, created_at, updated_at
   `).get({ now }) as RecomputeJobRow | undefined
 
-  return row ? recomputeJobRowToEntry(row) : null
+  if (!row) return null
+  const job = recomputeJobRowToEntry(row)
+  if (job.kind === 'resolve-actor-pds') actorPdsClaims.set(job.key, job)
+  return job
+}
+
+/** Commits the synchronous SQLite effects of a PDS lookup only for its current running claim. */
+export function commitActorPdsLookup(job: RecomputeJob, apply: () => undefined): boolean {
+  if (actorPdsClaims.get(job.key) !== job) return false
+
+  const db = getDb()
+  const committed = db.transaction(() => {
+    const running = db.prepare(`
+      SELECT 1 FROM recompute_jobs
+      WHERE id = ? AND kind = 'resolve-actor-pds' AND key = ? AND status = 'running'
+    `).get(job.id, job.key)
+    if (!running) return false
+    apply()
+    return true
+  }).immediate()
+
+  actorPdsClaims.delete(job.key)
+  return committed
 }
 
 /**
