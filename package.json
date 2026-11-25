@@ -2,7 +2,7 @@
   "name": "certified-organization-labeler",
   "description": "Certified Organization Labeler fork for app.certified.actor.organization",
   "license": "MIT OR Apache-2.0",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "type": "module",
   "scripts": {
